@@ -1,0 +1,42 @@
+[project]
+name = "xoftr-image-matching-pipeline"
+version = "0.1.0"
+description = "DIMER-oriented XoFTR detector-free image-matching pipeline: homography-supervised evaluation and bounded coarse-matcher fine-tuning."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "MIT" }
+authors = [{ name = "Kurt Valcorza" }]
+keywords = ["xoftr", "image-matching", "feature-correspondence", "homography", "dimer"]
+dependencies = [
+    "huggingface-hub==0.36.2",
+    "numpy==2.5.3",
+    "pillow==11.3.0",
+    "safetensors==0.8.0",
+    "torch==2.14.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==8.4.2", "ruff==0.16.6"]
+
+[build-system]
+requires = ["setuptools==78.1.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: downloads and runs the real pinned XoFTR checkpoint",
+]

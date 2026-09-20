@@ -1,0 +1,25 @@
+{
+  "format": "dimer_hf_snapshot",
+  "formatVersion": 1,
+  "modelKey": "xoftr",
+  "modelId": "vismatch/xoftr",
+  "revision": "d8ee7d89be3c9e5c157db3886db1c0f0e038b321",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 166,
+      "sha256": "97e4f408247d1f95334caa95b992bbab2081aff8ba069063c9c069359acd4bb4"
+    },
+    {
+      "path": "vismatch.yaml",
+      "bytes": 114,
+      "sha256": "64c2401cb5a86b410b2d669c41d4cbdbe97cd9d685a98dbf3619568bf6cbb8f8"
+    },
+    {
+      "path": "xoftr_640.safetensors",
+      "bytes": 44419304,
+      "sha256": "4d5ed62e8b41f862ecc5c660e31f1c450402966623d6a28e85acf7fbd794cc69"
+    }
+  ],
+  "totalBytes": 44419584
+}
