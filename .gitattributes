@@ -1,0 +1,6 @@
+# Line endings are load-bearing: digests and byte sizes are asserted cryptographically.
+* text=auto eol=lf
+
+# Model weights cache files must retain exact upstream bytes
+weights/** -text
+examples/sample-data/** -text
