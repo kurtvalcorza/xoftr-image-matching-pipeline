@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install frozen reference environment
+        run: python -m pip install -r requirements.lock.txt
+      - name: Install package without dependency resolution
+        run: python -m pip install --no-deps --no-build-isolation -e .
+      - name: Lock parity
+        run: python scripts/check_lock.py
+      - name: Ruff
+        run: ruff check src tests tools scripts
+      - name: Unit and contract tests
+        run: pytest -m 'not integration' -q
+      - name: Validate tutorial and model-card source
+        run: python tools/validate_release_assets.py
+      - name: Standalone notebook parity (NOTEBOOK_SPEC 2.0 PAR3)
+        run: python tools/build_notebook.py --check
+
+  integration:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      RUN_INTEGRATION: '1'
+      HF_HOME: ${{ github.workspace }}/.hf-cache
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Restore Hugging Face cache
+        uses: actions/cache@v4
+        with:
+          path: .hf-cache
+          key: xoftr-${{ runner.os }}-v1
+      - name: Install frozen reference environment
+        run: python -m pip install -r requirements.lock.txt
+      - name: Install package without dependency resolution
+        run: python -m pip install --no-deps --no-build-isolation -e .
+      - name: Lock parity
+        run: python scripts/check_lock.py
+      - name: Real pinned checkpoint smoke test
+        run: pytest -m integration -q
+      # The notebook is standalone (NOTEBOOK_SPEC 2.0 §4): it carries the package and pins its own
+      # runtime. DIMER_NOTEBOOK_CI_PREINSTALLED=1 skips the inline pip install so the frozen CPU
+      # reference environment above stays the runtime; the notebook stages the weights itself into
+      # weights/xoftr/ (the committed small files are already there).
+      - name: Execute live tutorial top-to-bottom
+        env:
+          DIMER_NOTEBOOK_CI_PREINSTALLED: '1'
+        run: python tools/run_notebook.py tutorials/xoftr_image_matching_colab.ipynb
+      - name: Upload tutorial outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: xoftr-live-tutorial-outputs
+          path: outputs/
