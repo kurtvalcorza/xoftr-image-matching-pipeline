@@ -54,7 +54,7 @@ The primary intended uses of this pipeline comprise four technical capabilities:
 2. Homography-supervised evaluation (`XoFTRPipeline.evaluate`, `evaluate_baselines`): Scoring `{id, image0, image1, homography}` records with exact references on precision, inlier count, median error and homography accuracy, and the same readings for the identity-guess and patch-nearest-neighbour baselines.
 3. Bounded supervised fine-tuning (`XoFTRPipeline.adapt`, `save_artifact`, `from_artifact`): Adapting the coarse transformer's last layers to a labelled pair set with validation-based epoch selection, exporting the adapter, and reloading it with verified parity.
 4. Pair synthesis with exact references (`samples.make_pair`, `make_pairs`, `build_sample_dataset`): Turning photographs into homography pairs with seeded geometric and photometric changes, so a matcher can be scored without manual annotation.
-Target application domains include image registration and stitching research, evaluation of matchers under controlled warps, teaching material about detector-free matching, and reproducible experiments on bounded adaptation within the DIMER platform.
+Target application domains include image registration and stitching research, evaluation of matchers under controlled warps, teaching material about detector-free matching, and reproducible experiments on bounded adaptation.
 
 ###### Primary Intended Users
 
