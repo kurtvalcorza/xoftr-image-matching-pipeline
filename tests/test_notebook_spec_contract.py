@@ -79,7 +79,8 @@ def test_release_notebook_exercises_the_adaptation_contract() -> None:
         "baselines = pipe.evaluate_baselines(test_records)",
         "frozen_test = pipe.evaluate(test_records)",
         "adapt_result = pipe.adapt(train_records, val_records, epochs=EPOCHS, lr=LEARNING_RATE,",
-        "assert adapted_test['precision_3px'] >= frozen_test['precision_3px'] - 0.01",
+        # A recorded verdict replaces the test-split assert (2026-10-05 review fix XOF-m2).
+        "comparison['verdicts'] = ",
         "pipe.save_artifact(artifact_dir,",
         "reloaded = XoFTRPipeline.from_artifact(artifact_dir, weights_dir=WEIGHTS_DIR, device=pipe.device)",  # noqa: E501
         "assert parity['identical_pairs'] == parity['of']",

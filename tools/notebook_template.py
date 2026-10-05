@@ -30,6 +30,20 @@ TEMPLATE = {
     "notebook_name": "xoftr_image_matching_colab.ipynb",
     "profile": "E2E",
     "mode": "GUIDED",
+    "isolated_runtime": True,
+    "infrastructure_labels": True,
+    # The fleet's uv isolated-environment mechanism (bioclip2-biodiversity-pipeline): managed CPython, a size- and
+    # SHA-256-verified uv wheel, and a lock compiled from the pyproject pins with
+    # `uv pip compile pyproject.toml --python-version 3.12 --python-platform x86_64-manylinux_2_28 --generate-hashes
+    # --only-binary :all: -o tutorials/requirements-colab.lock.txt`.
+    "managed_python": "3.12.12",
+    "uv": {
+        "version": "0.12.15",
+        "url": "https://files.pythonhosted.org/packages/1e/fd/432451d732917c49152a291de3ef171aa6b0f1a22d39780fb2c1f085ca4c/uv-0.12.15-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+        "bytes": 20081404,
+        "sha256": "aee9802f46bae436bd91751bb33ddeb379ef1596b5c19df193219d545d244b60",
+    },
+    "lock": "tutorials/requirements-colab.lock.txt",
     "pipeline_class": "XoFTRPipeline",
     "weights_key": "xoftr",
     "modules": ["config.py", "modeling.py", "model.py", "metrics.py", "samples.py", "pipeline.py", "provenance.py"],
@@ -67,7 +81,8 @@ TEMPLATE = {
     ],
     "capability": "detector-free image matching (dense coarse-to-fine correspondences with sub-pixel refinement), homography-supervised evaluation and bounded supervised fine-tuning of the coarse transformer's last layers on a labelled pair dataset, using the pinned `vismatch/xoftr` weights in the vendored XoFTR network",
     "run_all": (
-        "Selecting **Run all** in a fresh supported runtime installs the pinned dependencies, stages and digest-verifies the "
+        "Selecting **Run all** in a fresh supported runtime builds an isolated environment from the hash-locked pins (nothing is "
+        "installed into the notebook's own Python, so no restart is needed and Run all completes in one pass), stages and digest-verifies the "
         "pinned `vismatch/xoftr` snapshot (a 44 MB `xoftr_640.safetensors`, loaded strictly into the carried network; no pickle "
         "is opened anywhere), fetches the 360 pinned iNaturalist photographs from the project's open-data bucket (about 39 MB, "
         "each refused on any byte-size or SHA-256 mismatch), cuts them per species into 216 / 48 / 96 training, validation and "
@@ -80,12 +95,15 @@ TEMPLATE = {
         "manifest, and reloads that artifact into a fresh pipeline to verify match parity. The default path needs no repository "
         "clone, no DIMER worker or service, no credential, no upload dialog and no configuration edit (NOTEBOOK_SPEC 2.0 §5). "
         "On CPU the whole path took about 41 minutes on the build workstation after the downloads — dense matching at 640 px "
-        "is heavy without a GPU (expect longer on a 2-vCPU hosted runtime); a CUDA runtime is used automatically when present "
-        "and finishes in minutes."
+        "is heavy without a GPU (expect longer on a 2-vCPU hosted runtime); a CUDA runtime is used automatically when present — "
+        "the Kaggle T4 release run (21 September 2026) took about 25 minutes of cell time (1,496 s)."
     ),
     "byod": (
-        "After the tutorial workflow completes, set `USE_BYOD = True` in Section 4 and re-run from that cell to upload one zip "
-        "of JPEG / PNG photographs — at least eight, any subject, ideally textured — which are split by image, turned into "
+        "After the tutorial workflow completes, set `USE_BYOD = True` in Section 4 and either set `BYOD_PATH` to a zip or folder "
+        "in the runtime (Colab, Kaggle or Jupyter) or leave it empty to upload one zip in Colab, then choose **Run after** from "
+        "that cell (it first puts the model back to the pinned base) to supply JPEG / PNG photographs — at least **6** to run "
+        "(split 4 / 1 / 1, `min_byod_records()`), many more before a held-out number means anything; any subject, ideally "
+        "textured — which are split by image, turned into "
         "homography pairs with the same seeded warps, and passed through the same validation, baselines, fine-tuning, held-out "
         "evaluation, artifact export and reload-parity cells as the iNaturalist sample. The expected layout and the ceilings "
         "are stated in the Prerequisites and in Section 4, and uploaded files stay inside this runtime. BYOD is optional and "
@@ -119,6 +137,13 @@ TEMPLATE = {
         "before the network is constructed; the 840-px sibling checkpoint hosted beside it is recorded in the card and not "
         "fetched."
     ),
+    "guided": {
+        "opening": [
+            (
+                "**Who this notebook is for.** A learner who knows basic Python, has used Colab or Jupyter, and wants to see how a dense feature matcher is evaluated against exact references and what a bounded fine-tune of its coarse stage does — read honestly against two non-neural baselines. No prior experience with feature matching or fine-tuning is assumed; each term is explained where it first matters and again in the **Glossary** at the end. A GPU is strongly recommended: on CPU the run takes about 41 minutes.\n\n**Input → Model → Output.**\n\n| | Matching a pair | Bounded fine-tuning |\n|---|---|---|\n| Input | two images (64..1,024 px a side), here a photograph and its warped, re-lit copy with an exact homography | labelled pairs: 216 training and 48 validation pairs in the sample, one per photograph, split by photograph |\n| Model | XoFTR: a CNN backbone, a coarse transformer with dual-softmax matching at 1/8 resolution, then fine refinement | the last two coarse-transformer layers and the coarse projection trained with the coarse focal loss; validation precision at 3 px chooses the epoch |\n| Output | matched point pairs with confidences — not calibrated probabilities | a safetensors adapter, and held-out precision, inliers and homography accuracy per tier beside two baselines |\n\n**How to use this notebook.** Choose a runtime (a GPU is strongly recommended), then **Runtime → Run all**. Run all completes in one pass: Section 1 installs nothing into the notebook's own Python, so no restart is needed. Sections 1–3 are **infrastructure** — the isolated environment, the carried package (including the vendored network and the 360-photograph table) and the model snapshot — and their cells are collapsed; you may run them without studying them. The learning path starts in Section 4. Form fields (`# @param`) are the only values meant to be edited, and the defaults reproduce the recorded run. Before each principal result the notebook asks you to **Predict**; after it come **What to notice** and a collapsible **Check your reasoning** with a worked answer that names the run it quotes — the Kaggle T4 release run of 21 September 2026 or the CPU build record. Section 10 is a **change-one-thing experiment**, off by default. **Troubleshooting**, a **Glossary** and a **Conclusion** template are at the end. Writing your predictions down is optional.\n\n**Roadmap:** 1–3 infrastructure → 4 photographs, homography pairs and a split *(evaluation practice)* → 5 the inference contract on a drawn pair *(core concept: what a matcher returns)* → 6 two baselines and the frozen matcher per tier *(evaluation practice)* → 7 bounded fine-tuning *(core concept)* → 8 held-out evaluation → 9 re-match, export and reload *(engineering)* → 10 change one thing (optional) → conclude."
+            )
+        ]
+    },
     "learning_objectives": (
         "install the pinned runtime; read what the carried package guarantees; stage and digest-verify the immutable "
         "upstream snapshot into a vendored network; build a labelled pair set with exact references from digest-pinned "
@@ -139,9 +164,10 @@ TEMPLATE = {
         "none of these."
     ),
     "prerequisites": [
-        "- **Runtime:** a fresh supported runtime (Google Colab or Jupyter, Python 3.12). The default path runs on CPU (float32) and uses CUDA automatically when available. CPU is slow: dense matching at 640 px costs about 2.5 s per pair on the build workstation, so the build record measured 300.4 s to match and score the 96 test pairs, 432.4 s for the two baselines (the patch search and RANSAC on ~3,400 matches per pair) and 1494.9 s for the 3 epochs of fine-tuning (216 pairs per epoch through the backbone and coarse transformer, the last two layers and the projection training, plus the per-epoch validation matching) — about 41 minutes in all on the build workstation with the snapshot and photographs already cached (a 2-vCPU hosted runtime will be slower still); a hosted T4 finishes the same path in minutes. The pinned `torch==2.14.0` install is the large download of the run; the checkpoint is 44 MB and the photographs about 39 MB.",
+        "- **Learner:** basic Python and Colab or Jupyter familiarity; no prior experience with feature matching or fine-tuning. The notebook explains coarse-to-fine matching, dual-softmax, reprojection error, DLT and RANSAC, corner error, the focal loss, the tiers and the adapter where they are first used; the Glossary repeats them.",
+        "- **Runtime:** a fresh supported **Linux x86_64** runtime (Google Colab, Kaggle or Linux Jupyter); a GPU is strongly recommended. Section 1 builds its own Python 3.12.12 environment from a hash-locked list of manylinux wheels, so the kernel's own Python version does not matter and nothing is installed into it. The default path runs on CPU (float32) and uses CUDA automatically when available. CPU is slow: dense matching at 640 px costs about 2.5 s per pair on the build workstation, so the build record measured 300.4 s to match and score the 96 test pairs, 432.4 s for the two baselines (the patch search and RANSAC on ~3,400 matches per pair) and 1494.9 s for the 3 epochs of fine-tuning (216 pairs per epoch through the backbone and coarse transformer, the last two layers and the projection training, plus the per-epoch validation matching) — about 41 minutes in all on the build workstation with the snapshot and photographs already cached (a 2-vCPU hosted runtime will be slower still); the Kaggle T4 release run (21 September 2026) took about 25 minutes of cell time (1,496 s). The pinned `torch==2.14.0` install is the large download of the run; the checkpoint is 44 MB and the photographs about 39 MB.",
         "- **Knowledge:** basic Python and PIL; what a homography is and why a warped copy of an image has an exact correspondence for every pixel; what precision, reprojection error and RANSAC measure and why none is a human judgement; why a high match confidence is not a correct match.",
-        "- **Data contract:** records are `{id, image0, image1, homography}` — two PIL images (or files decodable by Pillow) with sides in [64, 1024] px (the sample is built at 640 px on the long side, sides multiples of 8) and a finite, non-singular 3 × 3 reference mapping image0 pixels to image1 pixels. Ids match `[A-Za-z0-9_.:-]{1,64}` and are unique; a dataset needs 4..5,000 records; the sample is split by photograph (stratified per species) after pixel-digest de-duplication so no photograph lands in two splits. BYOD accepts one zip of photographs, from which the same seeded pairs are synthesised.",
+        "- **Data contract:** records are `{id, image0, image1, homography}` — two PIL images (or files decodable by Pillow) with sides in [64, 1024] px (the sample is built at 640 px on the long side, sides multiples of 8) and a finite, non-singular 3 × 3 reference mapping image0 pixels to image1 pixels. Ids match `[A-Za-z0-9_.:-]{1,64}` and are unique; a training split needs 4..5,000 records and validation and test at least one each, so with the default 15 % + 20 % image hold-out the effective BYOD minimum is **6 photographs** (`min_byod_records()`); the sample is split by photograph (stratified per species) after pixel-digest de-duplication so no photograph lands in two splits. BYOD accepts one zip of photographs, from which the same seeded pairs are synthesised.",
         "- **Validation is structural, not semantic:** every image is opened and decoded and every `H` checked for shape and rank, but nothing checks that `image1` really is `image0` under `H` — a wrong reference is scored without complaint, and a pair of unrelated photographs is matched without complaint.",
         "- **Privacy:** Do not upload confidential or restricted data to a hosted runtime unless you are authorized to process it there. The default path uploads nothing.",
         "- **External access (data):** besides the model snapshot, the default path fetches 360 JPEG/PNG files from `https://inaturalist-open-data.s3.amazonaws.com/photos/<id>/medium.<ext>` (about 39 MB in total), each pinned by byte size and SHA-256 in the carried `samples.py` and refused on any mismatch; every photograph's iNaturalist observation page and observer login are kept in its record. Each photograph carries the CC0 1.0 licence its observer chose; nothing is committed to the repository.",
@@ -162,7 +188,14 @@ TEMPLATE = {
                 "assertion), and the training split's pair table is written to `outputs/{stem}_train.csv`.\n\n"
                 "Look for: 360 photographs, three splits with both tiers, three digests, one pair shown with its reference "
                 "corners, and four refusal probes — a duplicate id, an image over the side ceiling, a singular homography and a "
-                "dataset too small to split — each rejected before the model does anything."
+                "dataset too small to split — each rejected before the model does anything.\n\n"
+                "*Evaluation practice.* **Bring your own data (optional):** set `USE_BYOD = True` and either `BYOD_PATH` (a zip or "
+                "a folder of JPEG / PNG photographs, as a path in this runtime — this works on Colab, Kaggle and Jupyter) or leave "
+                "`BYOD_PATH` empty to upload exactly one zip through the Colab dialog; then choose **Run after** from this cell. "
+                "This cell first puts the model back to the pinned base, so Section 6 and Section 7's epoch 0 read the frozen "
+                "matcher. The effective minimum is 6 photographs.\n\n"
+                "**Predict before running:** each photograph becomes one pair with a perfectly known homography. What can such a "
+                "pair test, and what can it never test?"
             ),
             "code": (
                 "import hashlib\n"
@@ -171,26 +204,51 @@ TEMPLATE = {
                 "import numpy as np\n"
                 "from PIL import Image\n\n"
                 "USE_BYOD = False  # @param {{type:\"boolean\"}}\n"
+                "BYOD_PATH = ''  # @param {{type:\"string\"}}\n"
                 "SPLIT_SEED = 42  # @param {{type:\"integer\"}}\n\n"
                 "os.makedirs('outputs', exist_ok=True)\n"
+                "# A re-run after Section 7 (BYOD, or a new split): Section 6 and Section 7's epoch 0 must read the pinned base.\n"
+                "had_adapter = pipe.adapter is not None\n"
+                "restored_tensors = pipe.restore_base()\n"
+                "if had_adapter or restored_tensors:\n"
+                "    print({{'restored_pinned_base': len(restored_tensors), 'note': 'the fine-tuned coarse layers were put back to the checkpoint; Sections 5-7 start from it again'}})\n"
                 "if USE_BYOD:\n"
-                "    from google.colab import files\n"
-                "    uploaded = files.upload()\n"
-                "    file_name, payload = next(iter(uploaded.items()))\n"
-                "    byod_zip = Path('work') / 'byod.zip'\n"
-                "    byod_zip.parent.mkdir(parents=True, exist_ok=True)\n"
-                "    byod_zip.write_bytes(payload)\n"
+                "    if BYOD_PATH.strip():\n"
+                "        byod_zip = Path(BYOD_PATH.strip()).expanduser()\n"
+                "        if not byod_zip.exists():\n"
+                "            raise FileNotFoundError(f'BYOD_PATH {{BYOD_PATH!r}} does not exist (relative paths start at {{Path.cwd()}}): give a .zip or a folder holding JPEG / PNG photographs.')\n"
+                "        file_name = byod_zip.name\n"
+                "    else:\n"
+                "        try:\n"
+                "            from google.colab import files\n"
+                "        except ImportError:\n"
+                "            raise RuntimeError('USE_BYOD is True but BYOD_PATH is empty, and the upload dialog exists only in Google Colab: on Kaggle or Jupyter put the zip (or folder) in the runtime and set BYOD_PATH to its path.') from None\n"
+                "        uploaded = files.upload() or {{}}\n"
+                "        if len(uploaded) != 1:\n"
+                "            raise ValueError(f'Upload exactly one .zip file (received {{len(uploaded)}}; a cancelled dialog sends none): run this cell again.')\n"
+                "        file_name, payload = next(iter(uploaded.items()))\n"
+                "        if not file_name.lower().endswith('.zip'):\n"
+                "            raise ValueError(f'{{file_name}}: upload one .zip holding JPEG / PNG photographs.')\n"
+                "        byod_zip = Path('work') / 'byod.zip'\n"
+                "        byod_zip.parent.mkdir(parents=True, exist_ok=True)\n"
+                "        byod_zip.write_bytes(payload)\n"
                 "    records = load_byod_dataset(byod_zip)\n"
+                "    upscaled = sorted(r['id'] for r in records if 2 * max(r['image'].size) < WORKING_LONG_SIDE)\n"
+                "    if upscaled:\n"
+                "        print({{'caution': f'{{len(upscaled)}} photograph(s) are upscaled more than 2x to {{WORKING_LONG_SIDE}} px, so their pairs are built from interpolated pixels', 'ids': upscaled[:10]}})\n"
                 "    splits = split_dataset(records, seed=SPLIT_SEED)\n"
                 "    data_source = 'BYOD (' + file_name + ')'\n"
-                "    raw_rows = {{'byod_images': len(records)}}\n"
+                "    raw_rows = {{'byod_images': len(records), 'effective_minimum': min_byod_records()['total']}}\n"
+                "    if len(splits['test']) < 20:\n"
+                "        print({{'caution': f\"only {{len(splits['test'])}} held-out test pairs: precision and homography accuracy move in large steps and carry no dispersion estimate; add photographs before reading them\"}})\n"
                 "else:\n"
                 "    corpus_files = fetch_corpus(cache_dir='weights/inat-birds')\n"
                 "    corpus = read_corpus(corpus_files)\n"
                 "    splits = build_sample_dataset(corpus, seed=SPLIT_SEED)\n"
                 "    data_source = f'{{CORPUS_NAME}}: {{CORPUS_RELEASE}} ({{CORPUS_LICENSE}}); one seeded homography pair per photograph'\n"
                 "    raw_rows = {{'photographs': len(corpus), 'bytes': sum(len(v) for v in corpus_files.values()), 'observers': len({{r['observer'] for r in corpus}})}}\n"
-                "dataset_manifests = {{name: validate_dataset(part) for name, part in splits.items()}}\n"
+                "# The training split must hold MIN_RECORDS; validation and test only need one pair each (split_dataset checks that).\n"
+                "dataset_manifests = {{name: validate_dataset(part, min_records=MIN_RECORDS if name == 'train' else 1) for name, part in splits.items()}}\n"
                 "splits = {{name: manifest['records'] for name, manifest in dataset_manifests.items()}}\n"
                 "disjoint = check_split_disjoint(splits)\n"
                 "train_records, val_records, test_records = splits['train'], splits['validation'], splits['test']\n"
@@ -217,7 +275,15 @@ TEMPLATE = {
         },
         {
             "md": (
+                '**What to notice:** 360 photographs, 216 / 48 / 96 pairs with both tiers in every split, the three digests and the four refusals.\n\n<details><summary>Check your reasoning</summary>A synthetic warp tests whether the matcher finds the same physical point under a known perspective change and lighting change, scored exactly. It can never test a real viewpoint change of a 3-D scene, occlusion, a moving subject or another modality — which is what this checkpoint was trained for.</details>'
+            ),
+        },
+        {
+            "md": (
                 "## 5. Match through the inference contract\n\n"
+                "*Core concept.* A dense matcher returns many point pairs with confidences; a high confidence is not a correct "
+                "match, and only the reference homography can say which matches are right. **Predict before running:** on a "
+                "drawing of flat shapes, will the matcher return many matches or few?\n\n"
                 "The inference contract is exercised on a drawn pair: a 256 × 192 synthetic scene — a red square, a green circle "
                 "and a blue triangle on a light background with a faint grid, rendered in code exactly as the repository's "
                 "`examples/sample-data/generate_samples.py` renders it and digest-asserted against `SHA256SUMS` — and its copy "
@@ -291,6 +357,11 @@ TEMPLATE = {
         },
         {
             "md": (
+                "**What to notice:** the number of matches on the drawn pair, the per-pair `evaluation_report` and the sanity checks.\n\n<details><summary>Check your reasoning</summary>Expect fewer than on a textured photograph, since flat colour gives the coarse transformer little to tell cells apart — read the count yourself; no recorded run is quoted here. The drawn pair is plumbing evidence — that the contract returns well-formed matches and scores them against the known warp — not a measurement of matching quality; Section 6 measures that on 96 photograph pairs.</details>"
+            ),
+        },
+        {
+            "md": (
                 "## 6. Baselines and the frozen matcher on the test pairs\n\n"
                 "Three systems frame the adaptation, each read the same way. The **identity guess** answers that every grid "
                 "point of image0 is at the same coordinates in image1 — right only where the warp is tiny. The **patch nearest "
@@ -299,12 +370,14 @@ TEMPLATE = {
                 "every returned match against the reference `H`, **precision at 3 px** (also 1 px and 5 px), **matches and "
                 "inliers per pair**, the **median error** of the inliers, and **homography accuracy at 3 px / 5 px** — the "
                 "fraction of pairs whose RANSAC-DLT homography from the matches moves the image corners by less than the "
-                "threshold against the reference, the HPatches-style reading. All three are scored per tier as well. Expect the "
-                "frozen matcher far above both baselines on every reading: the build record measured precision at 3 px of "
-                "0.925 (0.984 easy / 0.866 hard) with 3,393 matches per pair and "
-                "homography accuracy 0.979, against 0.381 precision for the patch neighbour and 0.007 for the "
-                "identity guess — and read where it loses: on the hard tier, at 1 px, and in the pairs whose homography still "
-                "misses."
+                "threshold against the reference, the HPatches-style reading. All three are scored per tier as well. **What to "
+                "look for:** the frozen matcher against both baselines per tier, and where it loses — on the hard tier, at 1 px, "
+                "and in the pairs whose homography still misses. The patch neighbour searches only ±48 px, so on the hard tier "
+                "(±35°, scale 0.6–1.4) many true correspondences lie outside its window: its hard-tier score is partly a "
+                "search-radius artefact, not raw intensity matching failing.\n\n"
+                "*Evaluation practice.* The cell records a **verdict** — whether the frozen matcher beats both baselines — instead "
+                "of asserting it: on low-texture BYOD photographs a patch neighbour can come close, and that is a finding.\n\n"
+                "**Predict before running:** can a patch nearest neighbour find a ±35° warp?"
             ),
             "code": (
                 "METRICS = ('precision_3px', 'precision_1px', 'matches_per_pair', 'inliers_per_pair', 'median_error_px', 'homography_acc_3px', 'homography_acc_5px')\n\n\n"
@@ -322,7 +395,13 @@ TEMPLATE = {
                 "print({{'definitions': frozen_test['definitions']}})\n"
                 "worst = sorted(frozen_test['per_pair'], key=lambda r: r['precision_3px'])[:3]\n"
                 "print({{'weakest_pairs_frozen': [{{k: r[k] for k in ('id', 'tier', 'n_matches', 'precision_3px', 'corner_error_px')}} for r in worst]}})\n"
-                "assert frozen_test['precision_3px'] > baselines['patch_neighbour']['precision_3px'] and frozen_test['homography_acc_3px'] > baselines['identity']['homography_acc_3px']"
+                "frozen_verdict = 'frozen matcher above both baselines' if (frozen_test['precision_3px'] > baselines['patch_neighbour']['precision_3px'] and frozen_test['homography_acc_3px'] > baselines['identity']['homography_acc_3px']) else 'a baseline matches or beats the frozen matcher'\n"
+                "print({{'frozen_vs_baselines': frozen_verdict}})"
+            ),
+        },
+        {
+            "md": (
+                '**What to notice:** precision at 3 px and homography accuracy for the three systems, per tier, and the weakest frozen pairs.\n\n<details><summary>Check your reasoning</summary>Rarely. In the Kaggle T4 release run (21 September 2026) the patch neighbour scored precision at 3 px 0.381 and homography accuracy 0.479 overall; a review probe measured it at 0.652 on the easy tier and 0.109 on the hard tier (homography accuracy 0.875 against 0.083). The frozen matcher scored 0.925 (homography accuracy 0.979) with about 3,393 matches per pair, against 0.007 for the identity guess — far above both, and weakest on the hard tier and at 1 px (0.748).</details>'
             ),
         },
         {
@@ -342,7 +421,13 @@ TEMPLATE = {
                 "so the selector's job is as much to refuse an epoch that hurts as to keep one that helps. The build record kept "
                 "epoch 3 of 3 (validation precision at 3 px 0.908 frozen → 0.910); the "
                 "default is the configuration that gained on the held-out split, and a run that keeps epoch 0 is a valid "
-                "outcome, not a failure."
+                "outcome, not a failure.\n\n"
+                "*Core concept.* Every call to `pipe.adapt` starts from the **pinned base**: tensors an earlier call (or an "
+                "artifact) changed are put back first, so epoch 0 is always the frozen matcher and re-running Sections 7–8 with a "
+                "changed field repeats the comparison validly. To compare a change side by side without replacing the default "
+                "exports, use Section 10.\n\n"
+                "**Predict before running:** on a matcher that already scores 0.9 on validation, how much will three epochs move "
+                "it?"
             ),
             "code": (
                 "EPOCHS = 3  # @param {{type:\"integer\"}}\n"
@@ -356,10 +441,18 @@ TEMPLATE = {
                 "    if 'note' in entry:\n"
                 "        row['note'] = entry['note']\n"
                 "    print(row)\n\n\n"
+                "settings = {{'epochs': EPOCHS, 'lr': LEARNING_RATE, 'batch_size': BATCH_SIZE, 'trainable_coarse_layers': TRAINABLE_COARSE_LAYERS}}\n"
+                "if settings != {{'epochs': 3, 'lr': 5e-5, 'batch_size': 4, 'trainable_coarse_layers': 2}}:\n"
+                "    print({{'note': 'changed settings: this run starts again from the pinned base and replaces the default results of Sections 8-9; Section 10 compares a change side by side instead', 'settings': settings}})\n"
                 "t0 = time.perf_counter()\n"
                 "adapt_result = pipe.adapt(train_records, val_records, epochs=EPOCHS, lr=LEARNING_RATE, batch_size=BATCH_SIZE, trainable_coarse_layers=TRAINABLE_COARSE_LAYERS, progress=report)\n"
                 "adapt_seconds = round(time.perf_counter() - t0, 1)\n"
-                "print({{'trainable_parameters': adapt_result['n_trainable'], 'total_parameters': adapt_result['n_total'], 'best_epoch': adapt_result['best_epoch'], 'selection': adapt_result['selection'], 'seconds': adapt_seconds}})"
+                "print({{'trainable_parameters': adapt_result['n_trainable'], 'total_parameters': adapt_result['n_total'], 'best_epoch': adapt_result['best_epoch'], 'selection': adapt_result['selection'], 'started_from': adapt_result['started_from'], 'seconds': adapt_seconds}})"
+            ),
+        },
+        {
+            "md": (
+                '**What to notice:** the validation precision at 3 px per epoch, and `best_epoch`.\n\n<details><summary>Check your reasoning</summary>Very little. In the CPU build record validation precision at 3 px went 0.908 → 0.906 → 0.908 → 0.910 over epochs 0–3 and epoch 3 was kept — a difference of about one pair in 48. If no epoch beats the frozen matcher, epoch 0 is kept, and that is a valid result.</details>'
             ),
         },
         {
@@ -370,11 +463,13 @@ TEMPLATE = {
                 "every reading, and the per-tier breakdown is repeated. Read it in this order: **precision at 3 px** first (the "
                 "metric the epoch was selected on — the build record measured 0.925 → 0.930), then the inlier "
                 "count and the homography accuracy (0.979 → 0.979), then the tiers, where the easy tier went 0.984 → 0.985 and the hard tier 0.866 → 0.876. "
-                "The cell asserts only that the adapted matcher is not worse than the frozen one on precision at 3 px by more "
-                "than a rounding margin — a bounded adaptation of an already-fitted matcher may land flat, and the notebook says "
-                "so rather than asserting a gain. Ninety-six pairs from one seeded split give **no dispersion estimate**; the "
+                "The cell records verdicts — `improved`, `flat` (within 0.01) or `worse` on precision at 3 px and homography "
+                "accuracy — and `paired_per_pair`, how many test pairs got better or worse, instead of asserting them: the epoch "
+                "is chosen on validation, so the test split can move either way, and export, reload and the result still run. Ninety-six pairs from one seeded split give **no dispersion estimate**; the "
                 "deltas are sample-sanity evidence that the adaptation contract works, not a benchmark, and a result on warped "
-                "bird photographs says nothing about your scenes until you measure them."
+                "bird photographs says nothing about your scenes until you measure them.\n\n"
+                "**Predict before running:** if overall precision moves by half a point, how many of the 96 test pairs will have "
+                "got worse?"
             ),
             "code": (
                 "adapted_test = pipe.evaluate(test_records)\n"
@@ -382,6 +477,13 @@ TEMPLATE = {
                 "comparison = {{metric: {{'identity': round(baselines['identity'][metric], 3), 'patch_neighbour': round(baselines['patch_neighbour'][metric], 3), 'frozen': round(frozen_test[metric], 3), 'adapted': round(adapted_test[metric], 3)}} for metric in METRICS if np.isfinite(frozen_test[metric]) and np.isfinite(adapted_test[metric])}}\n"
                 "comparison['delta_vs_frozen'] = {{metric: round(adapted_test[metric] - frozen_test[metric], 3) for metric in METRICS if np.isfinite(frozen_test[metric]) and np.isfinite(adapted_test[metric])}}\n"
                 "comparison['by_tier'] = {{tier: {{'frozen': short(frozen_test['by_tier'][tier]), 'adapted': short(adapted_test['by_tier'][tier])}} for tier in adapted_test['by_tier']}}\n"
+                "frozen_by_id = {{row['id']: row['precision_3px'] for row in frozen_test['per_pair']}}\n"
+                "paired = [row['precision_3px'] - frozen_by_id[row['id']] for row in adapted_test['per_pair']]\n"
+                "comparison['paired_per_pair'] = {{'better': sum(d > 0 for d in paired), 'worse': sum(d < 0 for d in paired), 'same': sum(d == 0 for d in paired), 'of': len(paired)}}\n"
+                "def direction(new, old, tolerance=0.01):\n"
+                "    return 'flat' if abs(new - old) <= tolerance else ('improved' if new > old else 'worse')\n"
+                "# Reported verdicts, not assertions: a fine-tune that does not help on the test split is a result to record.\n"
+                "comparison['verdicts'] = {{'frozen_vs_baselines': frozen_verdict, 'adapted_vs_frozen_precision_3px': direction(adapted_test['precision_3px'], frozen_test['precision_3px']), 'adapted_vs_frozen_homography_acc_3px': direction(adapted_test['homography_acc_3px'], frozen_test['homography_acc_3px'])}}\n"
                 "for key, row in comparison.items():\n"
                 "    print({{key: row}})\n"
                 "evaluation_report_payload = {{\n"
@@ -403,8 +505,13 @@ TEMPLATE = {
                 "}}\n"
                 "with open('outputs/{stem}_evaluation_report.json', 'w', encoding='utf-8') as f:\n"
                 "    json.dump(evaluation_report_payload, f, indent=2, ensure_ascii=False)\n"
-                "assert adapted_test['precision_3px'] >= frozen_test['precision_3px'] - 0.01\n"
+                "print({{'verdicts': comparison['verdicts'], 'paired_per_pair': comparison['paired_per_pair']}})\n"
                 "print({{'report': 'outputs/{stem}_evaluation_report.json'}})"
+            ),
+        },
+        {
+            "md": (
+                '**What to notice:** `delta_vs_frozen`, the per-tier rows, `paired_per_pair` and the `verdicts`.\n\n<details><summary>Check your reasoning</summary>Not none. In the Kaggle T4 release run precision at 3 px moved from 0.925 to 0.930 (+0.005, `flat` by the 0.01 rule), homography accuracy stayed at 0.979, and matches per pair rose from about 3,393 to 3,572; the hard tier went 0.866 → 0.876 and the easy tier 0.984 → 0.985 in the build record. A half-point mean change is the balance of pairs that improved and pairs that worsened — read `paired_per_pair` before reading the mean as a gain.</details>'
             ),
         },
         {
@@ -421,7 +528,9 @@ TEMPLATE = {
                 "SHA-256, the training configuration and the epoch history (OUT8). `XoFTRPipeline.from_artifact` re-verifies the "
                 "base snapshot, checks the artifact manifest, its digest and its exact tensor set **before** deserialising, "
                 "refuses any tensor outside the coarse matcher, and overlays the tensors onto a freshly loaded base — a new object "
-                "from files, not the in-memory model (VER2). The cell asserts identical matches on four test pairs (VER4)."
+                "from files, not the in-memory model (VER2). The cell asserts identical matches on four test pairs (VER4) — a "
+                "contract check, so it stays a hard check.\n\n"
+                "**Predict before running:** will the adapted matcher return more or fewer matches on the drawn pair?"
             ),
             "code": (
                 "import shutil\n\n"
@@ -466,13 +575,74 @@ TEMPLATE = {
                 "print(sorted(os.listdir('outputs')))"
             ),
         },
+        {
+            "md": (
+                "**What to notice:** the drawn pair's match count and precision before and after, and the reload parity line.\n\n<details><summary>Check your reasoning</summary>Either is possible — record the change as a finding about the adaptation outside its corpus, from one drawing, not as a measurement. Reload parity held in the release run: four of four pairs identical.</details>"
+            ),
+        },
+        {
+            "md": (
+                "## 10. Change one thing: four trainable coarse layers (optional)\n\n"
+                "*Evaluation practice.* A **Predict → Change one thing → Run → Observe → Explain** activity, off by default so "
+                "Run all is unaffected. Set `RUN_EXPERIMENT = True`, change **one** field — by default four coarse-transformer "
+                "layers train instead of two — and run this cell after Sections 4–9. The experiment loads its **own** pipeline from "
+                "the verified snapshot, so it starts from the checkpoint and never touches the default `pipe`; it writes only to "
+                "`outputs/{stem}_experiment/`, prints the default and the changed run side by side (epoch 0 must match), and "
+                "checks that the default exports are byte-identical afterwards. On a GPU it takes about as long as Section 7; "
+                "leave it off on a CPU.\n\n"
+                "**Predict:** with twice the trainable layers, will held-out precision rise?"
+            ),
+            "code": (
+                "RUN_EXPERIMENT = False  # @param {{type:\"boolean\"}}\n"
+                "EXPERIMENT_TRAINABLE_COARSE_LAYERS = 4  # @param {{type:\"integer\"}}\n"
+                "EXPERIMENT_EPOCHS = 3  # @param {{type:\"integer\"}}\n"
+                "EXPERIMENT_LEARNING_RATE = 5e-5  # @param {{type:\"number\"}}\n\n"
+                "if not RUN_EXPERIMENT:\n"
+                "    print({{'experiment': 'skipped (RUN_EXPERIMENT = False); the default path above is complete'}})\n"
+                "else:\n"
+                "    canonical_files = {{'adapter': artifact_dir / 'adapter.safetensors', 'evaluation_report': Path('outputs/{stem}_evaluation_report.json'), 'result': Path('outputs/{stem}_result.json')}}\n"
+                "    canonical = {{name: hashlib.sha256(path.read_bytes()).hexdigest() for name, path in canonical_files.items()}}\n"
+                "    experiment_dir = Path('outputs/{stem}_experiment')\n"
+                "    shutil.rmtree(experiment_dir, ignore_errors=True)\n"
+                "    experiment_dir.mkdir(parents=True)\n"
+                "    # Its own pipeline from the verified snapshot: the experiment starts from the checkpoint and the default pipe is untouched.\n"
+                "    experiment_pipe = XoFTRPipeline.from_pretrained(weights_dir=WEIGHTS_DIR, device=pipe.device)\n"
+                "    experiment_result = experiment_pipe.adapt(train_records, val_records, epochs=EXPERIMENT_EPOCHS, lr=EXPERIMENT_LEARNING_RATE, batch_size=BATCH_SIZE, trainable_coarse_layers=EXPERIMENT_TRAINABLE_COARSE_LAYERS, progress=report)\n"
+                "    experiment_test = experiment_pipe.evaluate(test_records)\n"
+                "    side_by_side = {{\n"
+                "        'settings': {{'default': {{'trainable_coarse_layers': adapt_result['trainable_coarse_layers'], 'epochs': adapt_result['epochs'], 'lr': adapt_result['lr']}}, 'experiment': {{'trainable_coarse_layers': EXPERIMENT_TRAINABLE_COARSE_LAYERS, 'epochs': EXPERIMENT_EPOCHS, 'lr': EXPERIMENT_LEARNING_RATE}}}},\n"
+                "        'validation_precision_3px_by_epoch': {{'default': [round((h['val'] or {{}}).get('precision_3px', float('nan')), 3) for h in adapt_result['history']], 'experiment': [round((h['val'] or {{}}).get('precision_3px', float('nan')), 3) for h in experiment_result['history']]}},\n"
+                "        'best_epoch': {{'default': adapt_result['best_epoch'], 'experiment': experiment_result['best_epoch']}},\n"
+                "        'test': {{metric: {{'frozen': round(frozen_test[metric], 3), 'default': round(adapted_test[metric], 3), 'experiment': round(experiment_test[metric], 3)}} for metric in ('precision_3px', 'precision_1px', 'homography_acc_3px')}},\n"
+                "        'trainable_parameters': {{'default': adapt_result['n_trainable'], 'experiment': experiment_result['n_trainable']}},\n"
+                "    }}\n"
+                "    for key, row in side_by_side.items():\n"
+                "        print({{key: row}})\n"
+                "    with open(experiment_dir / 'experiment_report.json', 'w', encoding='utf-8') as handle:\n"
+                "        json.dump({{'side_by_side': side_by_side, 'history': experiment_result['history']}}, handle, indent=2, ensure_ascii=False, default=str)\n"
+                "    unchanged = {{name: hashlib.sha256(path.read_bytes()).hexdigest() == canonical[name] for name, path in canonical_files.items()}}\n"
+                "    if not all(unchanged.values()):\n"
+                "        raise RuntimeError(f'the experiment changed a default export: {{unchanged}}')\n"
+                "    print({{'default_exports_unchanged': unchanged, 'experiment_outputs': str(experiment_dir)}})\n"
+                "    del experiment_pipe"
+            ),
+        },
+        {
+            "md": (
+                "**Observe → Explain.** Compare the two validation curves (epoch 0 must be equal) and the `test` rows.\n\n"
+                "<details><summary>Check your reasoning</summary>The checkpoint already fits this task, so more trainable layers "
+                "mostly add ways to drift: expect differences of a pair or two in 48 on validation, which is noise, and a larger "
+                "adapter. No experiment run is recorded on the release runtime; explain what you see from the validation curve "
+                "and the paired counts rather than from a single test mean.</details>"
+            ),
+        },
     ],
     "closing": (
         "## Interpretation and limits\n\n"
         "The frozen matcher is already a strong correspondence engine on warped photographs — precision at 3 px of "
         "0.925 with thousands of matches per pair and homography accuracy 0.979, far above a patch nearest "
         "neighbour at 0.381 — and a bounded fine-tuning of the coarse transformer's last two layers and projection on 216 "
-        "pairs moved precision at 3 px from 0.925 to 0.930 (+0.005) with epoch 3 kept, homography accuracy at 3 px 0.979 → 0.979 and 3393 → 3572 matches per pair. That is the claim: the adaptation contract works end to end on a labelled pair set with exact "
+        "pairs moved precision at 3 px from 0.925 to 0.930 (+0.005, Kaggle T4 release run of 21 September 2026) with epoch 3 kept, homography accuracy at 3 px 0.979 → 0.979 and 3393 → 3572 matches per pair. That is the claim: the adaptation contract works end to end on a labelled pair set with exact "
         "references, and the numbers it produces are read on precision, inlier count and homography accuracy, per tier, against "
         "two non-neural baselines and the frozen model rather than in isolation.\n\n"
         "The test split is 96 pairs from one seeded draw of one sample, the validation split that picks the epoch is 48, the "
@@ -496,10 +666,35 @@ TEMPLATE = {
         "image-disjoint split, and emit the shown machine-readable artifacts — without the repository being reachable. It does "
         "**not** establish benchmark superiority, matching accuracy on real viewpoint changes, other modalities or other cameras, "
         "calibration, or production fitness.\n\n"
-        "**Optional experiments (they do not affect the default path):** set `TRAINABLE_COARSE_LAYERS = 4` and compare the "
-        "artifact size and the held-out precision; raise `EPOCHS` and watch the validation precision pick the epoch while the "
-        "training loss keeps falling; change `LEARNING_RATE` to `1e-5` and read a smaller, steadier change; or bring your own "
-        "photographs through BYOD and read the two baselines before the adapted number.\n\n"
+        "**Optional experiments (off by default; each names its field and what to run):** Section 10 trains four coarse "
+        "layers in its own pipeline and prints it beside the default run — change `EXPERIMENT_TRAINABLE_COARSE_LAYERS`, "
+        "`EXPERIMENT_EPOCHS` or `EXPERIMENT_LEARNING_RATE` (for example `1e-5`) there and run that cell again. Changing "
+        "`EPOCHS`, `LEARNING_RATE` or `TRAINABLE_COARSE_LAYERS` and choosing **Run after** from Section 7 also starts from the "
+        "pinned base — every `adapt` puts it back first — but replaces the default results and exports. BYOD: `USE_BYOD` and "
+        "`BYOD_PATH` in Section 4, then **Run after** from Section 4, and read the two baselines before the adapted number.\n\n"
+        "## Troubleshooting\n\n"
+'- **Section 1 stops with "This notebook needs a Linux x86_64 runtime"** — you are on Windows, macOS or an ARM machine. Use Google Colab, Kaggle or a Linux x86_64 Jupyter server.\n- **The uv wheel fails its size/SHA-256 check, or a download in Section 1 times out** — run Section 1 again; a complete environment is reused, an incomplete one is finished. If it repeats, the network is blocking or altering `files.pythonhosted.org` or `pypi.org`.\n- **"The isolated environment\'s Python process exited"** — usually out of memory. Restart the session and choose **Run all**; leave the optional experiment off on a small runtime.\n- **You re-ran Section 1 on its own** — nothing is lost: it keeps the running worker and every variable, so the cells after it keep working. After a session restart, run from the top.\n- **Section 3 reports a size or SHA-256 mismatch, or cannot reach the Hub** — the message names the file. Delete it from the snapshot folder Section 3 prints and run Section 3 again; the snapshot comes from `huggingface.co`.\n- **Section 4 cannot fetch a photograph, or one fails its digest** — `fetch_corpus` names it; the default path needs `inaturalist-open-data.s3.amazonaws.com`. Run Section 4 again (cached photographs are re-hashed); delete `weights/inat-birds/` if a cached file is corrupt.\n- **The run takes much longer than expected** — dense matching at 640 px is heavy: about 41 minutes on the build workstation\'s CPU and about 25 minutes of cell time on a Kaggle T4. Choose a GPU runtime, and leave Section 10 off on a CPU.\n- **Out of memory** — restart the session and choose **Run all** on a larger runtime; leave Section 10 off.\n- **BYOD: "BYOD_PATH … does not exist"** — the path is relative to the working directory printed in the message.\n- **BYOD: "the upload dialog exists only in Google Colab"** — on Kaggle or Jupyter, put the zip in the runtime (or attach it as a dataset) and set `BYOD_PATH`.\n- **BYOD: "Upload exactly one .zip file"** — the dialog was cancelled or several files were chosen; run the cell again.\n- **BYOD: "BYOD file \'…\' is not a decodable JPEG / PNG image"** — that file is corrupt or not an image; remove it from the zip.\n- **BYOD: "the train split holds …"** — add photographs; the message names the minimum (6 to run, many more to read a number).\n- **BYOD: "… upscaled more than 2×"** — those photographs are small; their pairs are built from upscaled pixels, so expect weaker matches.\n'
+        "## Glossary\n\n"
+        "- **Homography** — a 3 × 3 projective map between two images of a plane; a warped copy has an exact one.\n"
+        "- **Coarse-to-fine matching** — match cells at 1/8 resolution first, then refine each match at full resolution.\n"
+        "- **Dual-softmax** — a match score that is a softmax over rows times a softmax over columns of the similarity "
+        "matrix.\n"
+        "- **Linear attention** — the transformer attention variant XoFTR uses to keep dense matching affordable.\n"
+        "- **Reprojection error / precision at 3 px** — the distance between a match and where the reference homography "
+        "puts it; the share of matches within 3 px.\n"
+        "- **DLT / RANSAC / corner error** — fitting a homography to matches by direct linear transform inside a robust "
+        "sampler, and scoring it by how far it moves the image corners against the reference.\n"
+        "- **Focal loss** — the coarse loss, which down-weights easy cells.\n"
+        "- **Tiers** — `easy` and `hard` warp strengths in the sample.\n"
+        "- **Adapter / reload parity** — the trained tensors only (safetensors) overlaid on the pinned base; the reloaded "
+        "pipeline returns identical matches.\n"
+        "- **BYOD** — bring your own data: your photographs turned into pairs by the same seeded warps.\n\n"
+        "## Conclusion (your notes)\n\n"
+        "Optional — fill in from **your** run, not the recorded one:\n\n"
+        "- The data was ___ photographs; ___ test pairs (___ easy / ___ hard).\n"
+        "- Patch neighbour precision at 3 px ___; frozen ___ (hard tier ___); homography accuracy ___.\n"
+        "- After fine-tuning (epoch ___ kept): precision ___, homography accuracy ___; ___ pairs better and ___ worse.\n"
+        "- What I would need before claiming the fine-tune helps on my scenes: ___ (for example real viewpoint pairs with references, more pairs, several seeds).\n\n"
         "## References\n\n"
         "- Repository README: https://github.com/kurtvalcorza/xoftr-image-matching-pipeline/blob/main/README.md\n"
         "- Repository model card: https://github.com/kurtvalcorza/xoftr-image-matching-pipeline/blob/main/MODEL_CARD.md\n"

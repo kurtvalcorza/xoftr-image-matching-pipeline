@@ -153,6 +153,9 @@ class XoFTRPipeline:
         self.weight_sha256 = weight_sha256
         self.weight_size_bytes = weight_size_bytes
         self.adapter: dict[str, Any] | None = None
+        # Pinned-base values of every tensor adapt() or load_artifact() has changed, kept the first time each is
+        # about to change: every adaptation starts from the verified base, never from a previous run (XOF-M2).
+        self._base_state: dict[str, Any] = {}
         if hasattr(self.model, "parameters"):
             for param in self.model.parameters():
                 param.requires_grad_(False)
@@ -344,6 +347,23 @@ class XoFTRPipeline:
         loss = loss - FOCAL_ALPHA * (1 - conf10[pos]) ** FOCAL_GAMMA * conf10[pos].log()
         return POS_WEIGHT * loss.mean()
 
+    def _remember_base(self, names: Sequence[str]) -> None:
+        state = self.model.state_dict()
+        for name in names:
+            if name not in self._base_state:
+                self._base_state[name] = state[name].detach().clone()
+
+    def restore_base(self) -> list[str]:
+        """Put the pipeline back to the pinned base: copy the base values into every tensor an earlier adapt() or
+        load_artifact() changed and drop the adapter record, so `match`, `evaluate` and a new adapt() read the
+        untouched checkpoint. Returns the names of the restored tensors."""
+        restored = sorted(self._base_state)
+        if restored:
+            self.model.load_state_dict({**self.model.state_dict(), **self._base_state}, strict=True)
+            self.model.eval()
+        self.adapter = None
+        return restored
+
     def _trainable_names(self, trainable_coarse_layers: int) -> list[str]:
         if (
             isinstance(trainable_coarse_layers, bool)
@@ -378,8 +398,9 @@ class XoFTRPipeline:
         focal loss against the homography's coarse ground truth; `batch_size` pairs are accumulated per AdamW
         step (pairs have different sizes, so they are not stacked), gradients are clipped at 1.0, the order is
         seeded, no scheduler. Epoch 0 records the frozen model's validation metrics; the epoch with the highest
-        validation precision at 3 px is kept (ties broken by homography accuracy at 3 px). Transactional: any
-        failure restores the base tensors."""
+        validation precision at 3 px is kept (ties broken by homography accuracy at 3 px). Every call starts
+        from the pinned base: tensors an earlier adapt() or load_artifact() changed are restored first, so epoch
+        0 is always the frozen model. Transactional: any failure puts back the weights this call found."""
         from .samples import validate_dataset
 
         if isinstance(epochs, bool) or not isinstance(epochs, int) or not 1 <= epochs <= 20:
@@ -392,6 +413,12 @@ class XoFTRPipeline:
         train_checked = validate_dataset(train)["records"]
         val_checked = validate_dataset(val, min_records=1, max_records=MAX_EVAL_RECORDS)["records"] if val else []
         model = self.model
+        # The weights as this call found them: a failed call puts them back (the transactional contract), while
+        # a successful one starts from the pinned base.
+        current = model.state_dict()
+        previous_state = {k: current[k].detach().clone() for k in self._base_state}
+        restored = self.restore_base()
+        self._remember_base(names)
         torch.manual_seed(seed)
         started = time.perf_counter()
         wanted = set(names)
@@ -454,6 +481,7 @@ class XoFTRPipeline:
         except BaseException:
             restore = dict(model.state_dict())
             restore.update(initial_state)
+            restore.update(previous_state)  # a failed call leaves the weights as they were before it
             model.load_state_dict(restore, strict=True)
             model.eval()
             for param in model.parameters():
@@ -481,6 +509,8 @@ class XoFTRPipeline:
             "n_train": len(train_checked),
             "n_val": len(val_checked),
             "seed": seed,
+            "started_from": "pinned base"
+            + (f" (restored {len(restored)} tensors changed by an earlier run)" if restored else ""),
             "history": history,
             "seconds": round(time.perf_counter() - started, 2),
         }
@@ -565,6 +595,9 @@ class XoFTRPipeline:
                 raise ValueError(f"artifact tensor {key} is not an adaptable coarse-matcher tensor of the base")
             if tuple(value.shape) != tuple(state[key].shape):
                 raise ValueError(f"artifact tensor {key} has shape {tuple(value.shape)}, base has {tuple(state[key].shape)}")
+        self.restore_base()
+        self._remember_base(sorted(tensors))
+        state = self.model.state_dict()
         merged = dict(state)
         merged.update({k: v.to(state[k].dtype) for k, v in tensors.items()})
         self.model.load_state_dict(merged, strict=True)

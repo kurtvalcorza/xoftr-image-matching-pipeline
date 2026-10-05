@@ -4021,6 +4021,25 @@ def observer_overlap(splits: Mapping[str, Sequence[Mapping[str, Any]]]) -> dict[
     }
 
 
+def _split_sizes(n_images: int, val_fraction: float, test_fraction: float) -> tuple[int, int, int]:
+    """(train, validation, test) image counts that `split_dataset` cuts from `n_images` distinct images."""
+    n_test = max(1, round(n_images * test_fraction))
+    n_val = round(n_images * val_fraction)
+    return n_images - n_test - n_val, n_val, n_test
+
+
+def min_byod_records(*, val_fraction: float = 0.15, test_fraction: float = 0.2) -> dict[str, int]:
+    """The smallest BYOD photograph set `split_dataset` accepts: `MIN_RECORDS` training photographs and (when
+    `val_fraction` > 0) at least one validation photograph, after at least one test photograph is held out. Each
+    photograph becomes one pair. With the default fractions that is 6 photographs, split 4 / 1 / 1 — enough to run,
+    far too few to read a held-out number from."""
+    for n in range(1, MAX_RECORDS + 1):
+        train, val, test = _split_sizes(n, val_fraction, test_fraction)
+        if train >= MIN_RECORDS and (val >= 1 or val_fraction == 0):
+            return {"total": n, "train": train, "validation": val, "test": test}
+    raise ValueError("no dataset size satisfies these fractions")
+
+
 def split_dataset(
     records: Sequence[Mapping[str, Any]],
     *,
@@ -4042,11 +4061,20 @@ def split_dataset(
             unique.append({**record, "image": image})
     rng = random.Random(seed)
     rng.shuffle(unique)
-    n_test = max(1, round(len(unique) * test_fraction))
-    n_val = round(len(unique) * val_fraction)
+    _n_train, n_val, n_test = _split_sizes(len(unique), val_fraction, test_fraction)
     parts = {"test": unique[:n_test], "validation": unique[n_test : n_test + n_val], "train": unique[n_test + n_val :]}
+    need = min_byod_records(val_fraction=val_fraction, test_fraction=test_fraction)
+    advice = (
+        f"supply at least {need['total']} distinct photographs (split {need['train']} / {need['validation']} / "
+        f"{need['test']}); many more are needed before a held-out number means anything"
+    )
     if len(parts["train"]) < MIN_RECORDS:
-        raise ValueError(f"split leaves {len(parts['train'])} training images; at least {MIN_RECORDS} are required")
+        raise ValueError(
+            f"the train split holds {len(parts['train'])} of {len(unique)} distinct photographs; at least "
+            f"{MIN_RECORDS} are required — {advice}"
+        )
+    if val_fraction > 0 and not parts["validation"]:
+        raise ValueError(f"the validation split holds no photograph of {len(unique)} — {advice}")
     out = {}
     for offset, (name, part) in enumerate(parts.items()):
         relabelled = [{**r, "id": f"{name}-{i:03d}", "source_id": r["id"]} for i, r in enumerate(part)]
@@ -4059,11 +4087,20 @@ def load_byod_dataset(path: str | Path) -> list[dict[str, Any]]:
     with columns `id`, `file`); images are decoded, never extracted to disk."""
     source = Path(path)
     if source.is_dir():
-        names = sorted(p.name for p in source.iterdir() if p.suffix.lower() in (".jpg", ".jpeg", ".png"))
+        names = sorted(
+            p.name
+            for p in source.iterdir()
+            if p.suffix.lower() in (".jpg", ".jpeg", ".png") and not p.name.startswith(".")
+        )
         loader = lambda name: Image.open(source / name)  # noqa: E731
     elif source.is_file() and source.suffix.lower() == ".zip":
         archive = zipfile.ZipFile(source)
-        members = {Path(n).name: n for n in archive.namelist() if Path(n).suffix.lower() in (".jpg", ".jpeg", ".png")}
+        members = {
+            Path(n).name: n
+            for n in archive.namelist()
+            if Path(n).suffix.lower() in (".jpg", ".jpeg", ".png")
+            and not any(part == "__MACOSX" or part.startswith(".") for part in Path(n).parts)
+        }
         names = sorted(members)
         loader = lambda name: Image.open(io.BytesIO(archive.read(members[name])))  # noqa: E731
     else:
@@ -4072,8 +4109,11 @@ def load_byod_dataset(path: str | Path) -> list[dict[str, Any]]:
         raise ValueError("BYOD dataset holds no JPEG / PNG image files")
     out = []
     for name in names:
-        image = loader(name)
-        image.load()
+        try:
+            image = loader(name)
+            image.load()
+        except (OSError, SyntaxError, Image.DecompressionBombError) as exc:
+            raise ValueError(f"BYOD file {name!r} is not a decodable JPEG / PNG image ({exc})") from None
         out.append({"id": re.sub(r"[^A-Za-z0-9_.:-]", "_", Path(name).stem)[:64], "image": image.convert("RGB")})
     return out
 
