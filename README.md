@@ -17,7 +17,7 @@ The wrapper code in this repository is MIT licensed. The model weights and the v
 
 ## Status
 
-**Candidate.** The inference contract, the homography-supervised evaluation, the adaptation contract and the real pinned checkpoint have been exercised on the build workstation's CPU (the unit and model-backed suites, and the default tutorial path through the package API). An earlier `E2E` blob (`4c8e98c6`) ran in a Kaggle Tesla T4 runtime on 2026-09-21, but only after a manual restart following its install cell, so it is not one-pass evidence; the regenerated notebook (isolated `uv` environment, no restart) has not been run on a hosted runtime yet (recorded in `docs/release-verification.md`). Production HTTP serving / DIMER worker packaging remains a separate serving-readiness milestone.
+**Candidate.** The inference contract, the homography-supervised evaluation, the adaptation contract and the real pinned checkpoint have been exercised on the build workstation's CPU (the unit and model-backed suites, and the default tutorial path through the package API). An earlier `E2E` blob (`4c8e98c6`) ran in a Kaggle Tesla T4 runtime on 2026-09-21, but only after a manual restart following its install cell, so it is not one-pass evidence; the regenerated notebook (isolated `uv` environment, no restart) ran one pass with no restart on a fresh Colab Tesla T4 on 2026-10-10 (recorded in `docs/release-verification.md`). Production HTTP serving / DIMER worker packaging remains a separate serving-readiness milestone.
 
 ## Three things to know before you start
 
@@ -71,7 +71,7 @@ The default path runs on CPU and uses CUDA automatically when present (about 41 
 
 ## Release status
 
-**Candidate** — the regenerated `E2E` notebook (2026-10-05 review fixes: isolated `uv` environment, no restart) has no recorded hosted run yet. The earlier blob `4c8e98c6` (on `main` at `b0bf4a3`) executed in a Kaggle Tesla T4 runtime on 2026-09-21 (15/15 ok, 1496.0 s) only after a manual restart following the old install cell, so it is not one-pass clean-runtime evidence (XOF-M1); the record is in `docs/release-verification.md` and `STATUS.md`. Static and unit checks — including the standalone generator parity checks — are necessary but are never the evidence; a one-pass hosted run of the current blob is.
+**Candidate** — the regenerated `E2E` notebook (2026-10-05 review fixes: isolated `uv` environment, no restart) completed one pass with no restart and 0 errors on a fresh Colab Tesla T4 on 2026-10-10 (blob `9e0fd89d` at commit `552cb65`; Colab CLI 0.7.4 sequential execution, 17/17 code cells, 1581.2 s; frozen precision at 3 px 0.925 → adapted 0.930, homography accuracy 0.979 → 0.979, reload parity 4/4 — the same figures as the Kaggle T4 run). The earlier blob `4c8e98c6` (on `main` at `b0bf4a3`) executed in a Kaggle Tesla T4 runtime on 2026-09-21 (15/15 ok, 1496.0 s) only after a manual restart following the old install cell, so it is not one-pass clean-runtime evidence (XOF-M1); the record is in `docs/release-verification.md` and `STATUS.md`. Static and unit checks — including the standalone generator parity checks — are necessary but are never the evidence; a one-pass hosted run of the current blob is, and the 2026-10-10 Colab T4 run is that record; status stays Candidate until a reviewer/integrator accepts it.
 
 ## Weights layout
 
