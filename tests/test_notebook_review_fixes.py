@@ -82,6 +82,7 @@ def test_xof_m1_carried_lock_is_the_committed_lock_and_pins_every_runtime_pin(no
     build.check_lock(build._pins(ROOT), lock_text)
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Section 1 symlinks the managed interpreter; the cell targets Linux x86_64 (Windows needs a symlink privilege)")
 def test_xof_m1_section_1_is_idempotent_and_keeps_the_live_worker(notebook, tmp_path, monkeypatch, capsys):
     """The real Section 1 cell, run twice with a stand-in interpreter: the matching environment is reused (no
     download) and the live worker — with every variable later cells created — is kept."""
@@ -137,7 +138,7 @@ def test_xof_m2_adapt_and_load_artifact_restore_the_base_first():
     load = text[text.index("    def load_artifact(") : text.index("    def from_artifact(")]
     assert load.index("self.restore_base()") < load.index("self._remember_base(sorted(tensors))") < load.index("self.model.load_state_dict(merged")
     restore = text[text.index("    def restore_base(") : text.index("    def _trainable_names(")]
-    assert "{**self.model.state_dict(), **self._base_state}" in restore and "self.adapter = None" in restore
+    assert "{**state, **self._base_state}" in restore and "self.adapter = None" in restore
 
 
 def test_xof_m2_rerun_restores_the_base_and_the_experiment_has_its_own_pipeline(notebook):

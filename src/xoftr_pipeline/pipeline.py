@@ -357,9 +357,13 @@ class XoFTRPipeline:
         """Put the pipeline back to the pinned base: copy the base values into every tensor an earlier adapt() or
         load_artifact() changed and drop the adapter record, so `match`, `evaluate` and a new adapt() read the
         untouched checkpoint. Returns the names of the restored tensors."""
-        restored = sorted(self._base_state)
-        if restored:
-            self.model.load_state_dict({**self.model.state_dict(), **self._base_state}, strict=True)
+        state = self.model.state_dict()
+        # Only tensors whose live value differs from the base count as restored, so a re-run after an earlier
+        # restore (or a first adapt() on the untouched base) does not claim an earlier run changed anything
+        # (t5-base-text2text-pipeline 93a578f).
+        restored = sorted(n for n, base in self._base_state.items() if not bool((state[n] == base).all()))
+        if self._base_state:
+            self.model.load_state_dict({**state, **self._base_state}, strict=True)
             self.model.eval()
         self.adapter = None
         return restored

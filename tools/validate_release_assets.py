@@ -1,6 +1,6 @@
 """Static release-asset validation for the XoFTR image-matching (E2E) DIMER pipeline.
 
-Checks the STANDALONE tutorial notebook (DIMER Notebook Specification 2.0 §4), the tutorial
+Checks the STANDALONE tutorial notebook (DIMER Notebook Specification 2.2 §4), the tutorial
 registry, model card, README, STATUS.md and weight documentation for source conformance and
 cross-document identity consistency, and runs the generator parity checks (PAR1–PAR3).
 
@@ -157,10 +157,10 @@ INSTALL_CELL_MARKER = "# dimer: kernel cell"
 # ---------------------------------------------------------------------------
 # Shared checks. Everything below is source/structure validation only. Passing
 # these checks is NOT clean-runtime execution evidence under DIMER Notebook
-# Specification 2.0; see docs/release-verification.md for the release gate.
+# Specification 2.2; see docs/release-verification.md for the release gate.
 # ---------------------------------------------------------------------------
 
-NOTEBOOK_SPEC = "2.0"
+NOTEBOOK_SPEC = "2.2"
 ALLOWED_PROFILES = {"E2E", "ARTIFACT-INFERENCE", "TASK-INFERENCE", "MULTI-CAPABILITY", "SMOKE"}
 STATUS_TOKENS = ("Candidate", "Release-grade")
 PLACEHOLDER = re.compile(r"\b(TODO|TBD|FIXME)\b|Insert text here|Tooltip:", re.I)
