@@ -4,3 +4,6 @@
 # Model weights cache files must retain exact upstream bytes
 weights/** -text
 examples/sample-data/** -text
+
+# Execution evidence is recorded byte-for-byte (SHA-256 cited in docs/release-verification.md); never convert its line endings.
+docs/execution-evidence/** -text

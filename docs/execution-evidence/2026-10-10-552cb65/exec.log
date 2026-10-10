@@ -1,0 +1,71 @@
+[colab] Parsing notebook '/home/kurt/colab-runs/xoftr-image-matching-pipeline-552cb65-d4fd90/xoftr_image_matching_colab_552cb65_colab-cli-t4.ipynb'...
+[colab] Executing cell 1/17 - Infrastructure: build (or reuse) the isolated environment and route later cells to it...
+{'isolated_environment': '/content/dimer_isolated_env_2cff15d47fe4', 'reused': False, 'isolated_python': '3.12.12', 'kernel_python': '3.13.15', 'locked_packages': 42, 'setup_seconds': 49}
+{'routed_to': '/content/dimer_isolated_env_2cff15d47fe4/bin/python', 'worker_pid': 3975, 'worker_reused': False}
+[colab] Executing cell 2/17 - Infrastructure: record the runtime...
+{'notebook_source': {'repository': 'xoftr-image-matching-pipeline', 'repository_revision': 'f1084cc7fa2ca40207a66f0847d32c86f1219a38', 'embedded_module': 'src/xoftr_pipeline/config.py', 'embedded_modules': ['src/xoftr_pipeline/config.py', 'src/xoftr_pipeline/metrics.py', 'src/xoftr_pipeline/modeling.py', 'src/xoftr_pipeline/model.py', 'src/xoftr_pipeline/provenance.py', 'src/xoftr_pipeline/samples.py', 'src/xoftr_pipeline/pipeline.py'], 'module_sha256': 'b88a673ef0f83a4d609e02259fb94ea07c0ab94f8985afca99ebae64e18c3e25', 'generator': 'build_notebook.py/2.2', 'notebook_spec': '2.2'}, 'python': '3.12.12', 'executable': '/content/dimer_isolated_env_2cff15d47fe4/bin/python', 'torch': '2.14.0+cu130', 'numpy': '2.5.3', 'cuda': True}
+[colab] Executing cell 3/17 - xoftr_image_matching-08...
+[colab] Executing cell 4/17 - xoftr_image_matching-10...
+[colab] Executing cell 5/17 - xoftr_image_matching-12...
+[colab] Executing cell 6/17 - xoftr_image_matching-14...
+[colab] Executing cell 7/17 - xoftr_image_matching-16...
+[colab] Executing cell 8/17 - xoftr_image_matching-18...
+[colab] Executing cell 9/17 - xoftr_image_matching-20...
+[colab] Executing cell 10/17 - Infrastructure: stage and digest-verify the pinned snapshot, then load the model...
+{'model_id': 'vismatch/xoftr', 'revision': 'd8ee7d89be3c9e5c157db3886db1c0f0e038b321', 'license': 'Apache-2.0', 'files': 3, 'total_bytes': 44419584}
+{'weights_dir': '/content/weights/xoftr', 'fetched': ['README.md', 'vismatch.yaml', 'xoftr_640.safetensors']}
+{'verified_files': 3, 'revision': 'd8ee7d89be3c9e5c157db3886db1c0f0e038b321'}
+{'device': device(type='cuda'), 'source': 'local-snapshot'}
+[colab] Executing cell 11/17 - xoftr_image_matching-24...
+{'data_source': "iNaturalist CC0 bird photographs (six species): iNaturalist open-data bucket, research-grade CC0 photos selected 2026-09-19 (60 per species) (CC0 1.0 (each photo's own license_code on iNaturalist; observers credited in the records)); one seeded homography pair per photograph", 'raw_rows': {'photographs': 360, 'bytes': 39223447, 'observers': 222}, 'splits': {'train': 216, 'validation': 48, 'test': 96}, 'observer_overlap': {'observers': 222, 'in_more_than_one_split': 53}, 'tiers': {'easy': {'jitter': 0.06, 'rotation': 10.0, 'scale': (0.9, 1.1), 'brightness': (0.85, 1.15), 'contrast': (0.85, 1.15), 'gamma': (1.0, 1.0), 'blur': 0.0, 'noise': 4.0}, 'hard': {'jitter': 0.18, 'rotation': 35.0, 'scale': (0.6, 1.4), 'brightness': (0.6, 1.4), 'contrast': (0.6, 1.4), 'gamma': (0.7, 1.4), 'blur': 1.2, 'noise': 10.0}}}
+{'train': {'n': 216, 'tiers': {'easy': 108, 'hard': 108}, 'image_side': {'min': 640, 'max': 640}, 'digest': 'a36527cea76b18e1...'}}
+{'validation': {'n': 48, 'tiers': {'easy': 24, 'hard': 24}, 'image_side': {'min': 640, 'max': 640}, 'digest': '8c636af100798174...'}}
+{'test': {'n': 96, 'tiers': {'easy': 48, 'hard': 48}, 'image_side': {'min': 640, 'max': 640}, 'digest': '1bdc7d3762338bb4...'}}
+{'example': {'id': 'train-000', 'tier': 'easy', 'size': [480, 640], 'corners_under_H': [[18.3, 16.5], [468.4, -1.7], [479.2, 639.0], [7.2, 631.4]], 'observation': 'https://www.inaturalist.org/observations/12337763'}}
+{'probe': 'duplicate id', 'rejected': "duplicate id 'same'"}
+{'probe': 'image over the side ceiling', 'rejected': 'records[0].image0: image side outside 1..MAX_IMAGE_SIDE=4096 px: (4097, 8)'}
+{'probe': 'singular homography', 'rejected': 'records[0].homography: matrix is singular'}
+{'probe': 'too small', 'rejected': '3 records; 4..5000 are required'}
+[colab] Executing cell 12/17 - xoftr_image_matching-27...
+{'ceilings': {'MIN_SIDE': 64, 'MAX_SIDE': 1024, 'DIVISIBLE_BY': 8, 'MAX_IMAGE_SIDE': 4096, 'MIN_RECORDS': 4, 'MAX_RECORDS': 5000, 'thresholds': {'coarse': 0.3, 'fine': 0.1}, 'device': 'cuda'}}
+{'scene_sha256': '3420b1d3755a5bf9...', 'manifest_verdict': 'accepted', 'findings': 1}
+/content/dimer_isolated_env_2cff15d47fe4/lib/python3.12/site-packages/torch/functional.py:504: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/native/TensorShape.cpp:4221.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+{'checks': {'same_length': True, 'coordinates_inside_frames': True, 'confidences_in_unit_interval': True, 'some_matches': True}, 'seconds': 0.88, 'frozen_scene': {'precision_3px': 0.98, 'n_inliers': 530, 'corner_error_px': 0.581}, 'verdict': 'sample-sanity', 'first_matches': [[31.700000762939453, 27.299999237060547, 43.70000076293945, 20.100000381469727], [36.20000076293945, 27.399999618530273, 48.099998474121094, 20.100000381469727], [49.29999923706055, 20.5, 60.20000076293945, 12.5]]}
+[colab] Executing cell 13/17 - xoftr_image_matching-30...
+{'baseline_seconds': 310.4}
+{'identity': {'precision_3px': 0.007, 'precision_1px': 0.0, 'matches_per_pair': 267.188, 'inliers_per_pair': 1.896, 'median_error_px': 2.326, 'homography_acc_3px': 0.0, 'homography_acc_5px': 0.0}, 'by_tier': {'easy': {'precision_3px': 0.012, 'precision_1px': 0.001, 'matches_per_pair': 262.833, 'inliers_per_pair': 3.271, 'median_error_px': 2.325, 'homography_acc_3px': 0.0, 'homography_acc_5px': 0.0}, 'hard': {'precision_3px': 0.002, 'precision_1px': 0.0, 'matches_per_pair': 271.542, 'inliers_per_pair': 0.521, 'median_error_px': 2.358, 'homography_acc_3px': 0.0, 'homography_acc_5px': 0.0}}}
+{'patch_neighbour': {'precision_3px': 0.381, 'precision_1px': 0.314, 'matches_per_pair': 267.188, 'inliers_per_pair': 101.167, 'median_error_px': 0.546, 'homography_acc_3px': 0.479, 'homography_acc_5px': 0.51}, 'by_tier': {'easy': {'precision_3px': 0.652, 'precision_1px': 0.563, 'matches_per_pair': 262.833, 'inliers_per_pair': 172.729, 'median_error_px': 0.521, 'homography_acc_3px': 0.875, 'homography_acc_5px': 0.917}, 'hard': {'precision_3px': 0.109, 'precision_1px': 0.065, 'matches_per_pair': 271.542, 'inliers_per_pair': 29.604, 'median_error_px': 0.819, 'homography_acc_3px': 0.083, 'homography_acc_5px': 0.104}}}
+{'frozen_model_test': {'precision_3px': 0.925, 'precision_1px': 0.748, 'matches_per_pair': 3392.604, 'inliers_per_pair': 3263.76, 'median_error_px': 0.47, 'homography_acc_3px': 0.979, 'homography_acc_5px': 0.99}, 'n': 96, 'verdict': 'measured', 'seconds': 181.5}
+{'by_tier_frozen': {'easy': {'precision_3px': 0.984, 'precision_1px': 0.891, 'matches_per_pair': 3964.188, 'inliers_per_pair': 3911.042, 'median_error_px': 0.388, 'homography_acc_3px': 1.0, 'homography_acc_5px': 1.0}, 'hard': {'precision_3px': 0.866, 'precision_1px': 0.605, 'matches_per_pair': 2821.021, 'inliers_per_pair': 2616.479, 'median_error_px': 0.643, 'homography_acc_3px': 0.958, 'homography_acc_5px': 0.979}}}
+{'definitions': {'precision_3px': 'fraction of returned matches whose reprojection error under the reference homography is below 3 px, averaged over pairs (a pair with no matches scores 0); in 0..1', 'precision_1px': 'the same at 1 px', 'precision_5px': 'the same at 5 px', 'matches_per_pair': 'mean number of returned matches per pair', 'inliers_per_pair': 'mean number of returned matches under 3 px per pair', 'median_error_px': 'median reprojection error of the inliers under 3 px, pooled over pairs; px', 'homography_acc_3px': 'fraction of pairs whose RANSAC-DLT homography from the matches moves the four corners by less than 3 px on average against the reference; in 0..1', 'homography_acc_5px': 'the same at 5 px'}}
+{'weakest_pairs_frozen': [{'id': 'test-027', 'tier': 'hard', 'n_matches': 204, 'precision_3px': 0.24019607843137256, 'corner_error_px': 492.3163039096683}, {'id': 'test-091', 'tier': 'hard', 'n_matches': 403, 'precision_3px': 0.5583126550868487, 'corner_error_px': 4.627550322947148}, {'id': 'test-067', 'tier': 'hard', 'n_matches': 928, 'precision_3px': 0.5754310344827587, 'corner_error_px': 1.6583467916955599}]}
+{'frozen_vs_baselines': 'frozen matcher above both baselines'}
+[colab] Executing cell 14/17 - xoftr_image_matching-33...
+{'epoch': 0, 'train_loss': None, 'val_precision_3px': 0.908, 'val_homography_acc_3px': 0.958, 'val_inliers_per_pair': 3132.729, 'val_matches_per_pair': 3249.958, 'val_n': 48, 'note': 'frozen model'}
+{'epoch': 1, 'train_loss': 0.7216, 'val_precision_3px': 0.906, 'val_homography_acc_3px': 0.979, 'val_inliers_per_pair': 3295.125, 'val_matches_per_pair': 3445.521, 'val_n': 48}
+{'epoch': 2, 'train_loss': 0.6485, 'val_precision_3px': 0.908, 'val_homography_acc_3px': 0.979, 'val_inliers_per_pair': 3335.729, 'val_matches_per_pair': 3495.167, 'val_n': 48}
+{'epoch': 3, 'train_loss': 0.6132, 'val_precision_3px': 0.91, 'val_homography_acc_3px': 0.979, 'val_inliers_per_pair': 3369.438, 'val_matches_per_pair': 3533.875, 'val_n': 48}
+{'trainable_parameters': 1378560, 'total_parameters': 11091722, 'best_epoch': 3, 'selection': 'highest validation precision at 3 px (ties: homography accuracy at 3 px)', 'started_from': 'pinned base', 'seconds': 517.3}
+[colab] Executing cell 15/17 - xoftr_image_matching-36...
+{'precision_3px': {'identity': 0.007, 'patch_neighbour': 0.381, 'frozen': 0.925, 'adapted': 0.93}}
+{'precision_1px': {'identity': 0.0, 'patch_neighbour': 0.314, 'frozen': 0.748, 'adapted': 0.753}}
+{'matches_per_pair': {'identity': 267.188, 'patch_neighbour': 267.188, 'frozen': 3392.604, 'adapted': 3572.146}}
+{'inliers_per_pair': {'identity': 1.896, 'patch_neighbour': 101.167, 'frozen': 3263.76, 'adapted': 3414.823}}
+{'median_error_px': {'identity': 2.326, 'patch_neighbour': 0.546, 'frozen': 0.47, 'adapted': 0.472}}
+{'homography_acc_3px': {'identity': 0.0, 'patch_neighbour': 0.479, 'frozen': 0.979, 'adapted': 0.979}}
+{'homography_acc_5px': {'identity': 0.0, 'patch_neighbour': 0.51, 'frozen': 0.99, 'adapted': 0.99}}
+{'delta_vs_frozen': {'precision_3px': 0.005, 'precision_1px': 0.005, 'matches_per_pair': 179.542, 'inliers_per_pair': 151.062, 'median_error_px': 0.002, 'homography_acc_3px': 0.0, 'homography_acc_5px': 0.0}}
+{'by_tier': {'easy': {'frozen': {'precision_3px': 0.984, 'precision_1px': 0.891, 'matches_per_pair': 3964.188, 'inliers_per_pair': 3911.042, 'median_error_px': 0.388, 'homography_acc_3px': 1.0, 'homography_acc_5px': 1.0}, 'adapted': {'precision_3px': 0.985, 'precision_1px': 0.894, 'matches_per_pair': 3971.292, 'inliers_per_pair': 3920.875, 'median_error_px': 0.377, 'homography_acc_3px': 1.0, 'homography_acc_5px': 1.0}}, 'hard': {'frozen': {'precision_3px': 0.866, 'precision_1px': 0.605, 'matches_per_pair': 2821.021, 'inliers_per_pair': 2616.479, 'median_error_px': 0.643, 'homography_acc_3px': 0.958, 'homography_acc_5px': 0.979}, 'adapted': {'precision_3px': 0.876, 'precision_1px': 0.612, 'matches_per_pair': 3173.0, 'inliers_per_pair': 2908.771, 'median_error_px': 0.656, 'homography_acc_3px': 0.958, 'homography_acc_5px': 0.979}}}}
+{'paired_per_pair': {'better': 53, 'worse': 39, 'same': 4, 'of': 96}}
+{'verdicts': {'frozen_vs_baselines': 'frozen matcher above both baselines', 'adapted_vs_frozen_precision_3px': 'flat', 'adapted_vs_frozen_homography_acc_3px': 'flat'}}
+{'verdicts': {'frozen_vs_baselines': 'frozen matcher above both baselines', 'adapted_vs_frozen_precision_3px': 'flat', 'adapted_vs_frozen_homography_acc_3px': 'flat'}, 'paired_per_pair': {'better': 53, 'worse': 39, 'same': 4, 'of': 96}}
+{'report': 'outputs/xoftr_image_matching_evaluation_report.json'}
+[colab] Executing cell 16/17 - xoftr_image_matching-39...
+{'scene': {'frozen': {'n_matches': 541, 'precision_3px': 0.9796672828096118, 'median_error_px': 0.41706225861508683}, 'adapted': {'n_matches': 538, 'precision_3px': 0.9888475836431226, 'median_error_px': 0.4631290087592922}}, 'scene_after_adaptation': {'precision_3px': 0.989, 'n_inliers': 532, 'corner_error_px': 0.711}, 'verdict': 'sample-sanity'}
+{'artifact': 'outputs/xoftr_image_matching_adapter', 'format': 'org.valcorza.xoftr.adapter.v1', 'tensors': 22, 'bytes': 5516512, 'sha256': '9d99daf8e48d27d7...'}
+{'reload_parity': {'identical_pairs': 4, 'of': 4}, 'reloaded_best_epoch': 3}
+['provenance.json', 'sample-data', 'xoftr_image_matching_adapter', 'xoftr_image_matching_evaluation_report.json', 'xoftr_image_matching_input_manifest.json', 'xoftr_image_matching_result.json', 'xoftr_image_matching_shapes.json', 'xoftr_image_matching_train.csv']
+[colab] Executing cell 17/17 - xoftr_image_matching-42...
+{'experiment': 'skipped (RUN_EXPERIMENT = False); the default path above is complete'}
+[colab] Saving notebook with outputs to '/home/kurt/colab-runs/xoftr-image-matching-pipeline-552cb65-d4fd90/xoftr_image_matching_colab_552cb65_colab-cli-t4_output.ipynb'...
