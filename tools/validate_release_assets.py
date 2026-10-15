@@ -49,8 +49,13 @@ CODE_MARKERS = (
     "corpus = read_corpus(corpus_files)",
     "splits = build_sample_dataset(corpus, seed=SPLIT_SEED)",
     "records = load_byod_dataset(byod_zip)",
-    "splits = split_dataset(records, seed=SPLIT_SEED)",
-    "dataset_manifests = {name: validate_dataset(part, min_records=MIN_RECORDS if name == 'train' else 1) for name, part in splits.items()}",
+    "byod_splits = split_dataset(records, seed=SPLIT_SEED)",
+    "return {name: validate_dataset(part, min_records=MIN_RECORDS if name == 'train' else 1) for name, part in parts.items()}",
+    # A refused BYOD input is one message, no traceback, no stale outputs; later cells print `skipped` (XOF-m8, DAT20)
+    "except (ValueError, zipfile.BadZipFile) as exc:",
+    "print({'byod_refused': byod_refusal,",
+    "stale_dir = Path('outputs/_stale_before_byod')",
+    "if not DATA_READY:",
     "restored_tensors = pipe.restore_base()",
     "BYOD_PATH = ''",
     "disjoint = check_split_disjoint(splits)",
@@ -71,7 +76,11 @@ CODE_MARKERS = (
     "baselines = pipe.evaluate_baselines(test_records)",
     "frozen_test = pipe.evaluate(test_records)",
     "frozen_verdict = ",
-    "adapt_result = pipe.adapt(train_records, val_records, epochs=EPOCHS, lr=LEARNING_RATE, batch_size=BATCH_SIZE, trainable_coarse_layers=TRAINABLE_COARSE_LAYERS, progress=report)",
+    "adapt_result = pipe.adapt(train_records, val_records, epochs=EPOCHS, lr=LEARNING_RATE, batch_size=BATCH_SIZE, trainable_coarse_layers=TRAINABLE_COARSE_LAYERS, selection_margin=SELECTION_MARGIN, progress=report)",
+    # Recipe selection on validation only, pre-registered grid behind a toggle (XOF-M5)
+    "RUN_RECIPE_GRID = False",
+    "RECIPE_GRID = ({'lr': 2e-5, 'epochs': 3}, {'lr': 5e-5, 'epochs': 3}, {'lr': 1e-4, 'epochs': 3})",
+    "'recipe_selection': recipe_selection,",
     "adapted_test = pipe.evaluate(test_records)",
     "adapted_val = pipe.evaluate(val_records)",
     "comparison['verdicts'] = ",
@@ -95,6 +104,9 @@ CODE_MARKERS = (
 # Profile-specific learner-facing statements.
 MARKDOWN_MARKERS = (
     # The guided layer (2026-10-05 review fix XOF-M3)
+    "> **⚠️ Notice.** For research, training and evaluation only.",
+    "**Overlap with the checkpoint's training data:**",
+    "**How the recipe is selected (validation only).**",
     "**Who this notebook is for.**",
     "**How to use this notebook.**",
     "**Predict before running:**",
@@ -160,7 +172,7 @@ INSTALL_CELL_MARKER = "# dimer: kernel cell"
 # Specification 2.2; see docs/release-verification.md for the release gate.
 # ---------------------------------------------------------------------------
 
-NOTEBOOK_SPEC = "2.2"
+NOTEBOOK_SPEC = "2.5"
 ALLOWED_PROFILES = {"E2E", "ARTIFACT-INFERENCE", "TASK-INFERENCE", "MULTI-CAPABILITY", "SMOKE"}
 STATUS_TOKENS = ("Candidate", "Release-grade")
 PLACEHOLDER = re.compile(r"\b(TODO|TBD|FIXME)\b|Insert text here|Tooltip:", re.I)
@@ -235,7 +247,9 @@ COMMON_MARKDOWN_MARKERS = (
     "without the repository being",
     "It does **not** establish benchmark superiority",
     "## References",
-    f"- Repository model card: https://github.com/kurtvalcorza/{REPO_NAME}/blob/main/MODEL_CARD.md",
+    # Numbered IEEE-style references (XOF-m5)
+    "[1] Ö. Tuzcuoğlu, A. Köksal, B. Sofu, S. Kalkan and A. A. Alatan,",
+    f"https://github.com/kurtvalcorza/{REPO_NAME}/blob/main/MODEL_CARD.md",
 )
 # Patterns that must never appear in tutorial code (comment-stripped), in any cell.
 FORBIDDEN_PATTERNS = (

@@ -141,6 +141,32 @@ A known-failing default path in the supported runtime blocks release (REL11).
 |---|---|---|---|---|
 | `xoftr_image_matching_colab.ipynb` (`E2E`) | `b0bf4a3` (cited as `4a24700`, pre-squash) / `4c8e98c6` | 2026-09-21 | Kaggle Tesla T4 (`kurtvalcorza/dimer-nb2-xoftr-image-matching` v1; image `torch 2.10.0+cu128` / `transformers 5.0.0` before the pinned install, `torch 2.14.0+cu130` after, Python 3.12.13, `cuda`) | **PASSED** — 15/15 code cells ok (1 restart after install cell); 368 files, 84 MB staged into a clean cache (the Hub snapshot plus the 360 pinned iNaturalist photographs); comparison {precision_3px: {identity: 0.007, patch_neighbour: 0.381, frozen: 0.925, adapted: 0.93}, precision_1px: {identity: 0.0, patch_neighbour: 0.314, frozen: 0.748, adapted: 0.753}, matches_per_pair: {identity: 267.188, patch_neighbour: 267.188, frozen: 3392.604, adapted: 3572.146}, inliers_per_pair: {identity: 1.896, patch_neighbour: 101.167, frozen: 3263.76, adapted: 3414.823}, median_error_px: {identity: 2.326, patch_neighbour: 0.546, frozen: 0.47, adapted: 0.472}, homography_acc_3px: {identity: 0.0, patch_neighbour: 0.479, frozen: 0.979, adapted: 0.979}, homography_acc_5px: {identity: 0.0, patch_neighbour: 0.51, frozen: 0.99, adapted: 0.99}, delta_vs_frozen: {precision_3px: 0.005, precision_1px: 0.005, matches_per_pair: 179.542, inliers_per_pair: 151.062, median_error_px: 0.002, homography_acc_3px: 0.0, homography_acc_5px: 0.0}} (easy / hard tiers in the archived result); reload parity {identical_pairs: 4, of: 4}; run summary and executed notebook archived under `.agent/backups/kaggle-e2e-2026-09-19/out/dimer-nb2-xoftr-image-matching/v1/evidence/` in the workspace |
 
+## Recipe selection (XOF-M5, pre-registered 2026-10-15)
+
+The fine-tuning recipe is selected on the **validation split only**; the test split is scored once, after the choice.
+The grid below was fixed on 2026-10-15, before any score of it on the half-pixel-corrected pairs (XOF-M4) existed, and
+is carried in the notebook's Section 7 as `RECIPE_GRID`:
+
+| Candidate | Learning rate | Epoch cap | Trainable coarse layers | Batch | Seed |
+|---|---|---|---|---|---|
+| A | 2e-5 | 3 | 2 | 4 | 0 |
+| B (pre-selected default) | 5e-5 | 3 | 2 | 4 | 0 |
+| C | 1e-4 | 3 | 2 | 4 | 0 |
+
+Rule: within a candidate, an epoch is kept only if its validation precision at 3 px beats the frozen epoch 0 by more
+than `SELECTION_MARGIN` = 0.01 (otherwise epoch 0, the frozen matcher). Candidates are ranked by the kept epoch's
+validation precision at 3 px (ties: homography accuracy at 3 px). The best replaces B only if it beats B by more than
+0.01 on validation; a tie or a smaller gain keeps B.
+
+The grid adds two or three fine-tuning runs (about 9 minutes each on a T4, from the 517 s Section 7 of the Colab T4 run
+of `552cb65`), so it runs only with `RUN_RECIPE_GRID = True`; the default path trains B alone and records that the grid
+was not run in that session.
+
+**Validation table: pending.** No grid run exists yet. Until a hosted run with `RUN_RECIPE_GRID = True` is recorded here
+(every candidate, every epoch, validation only), B is the pre-registered starting point, not a validated choice. The
+earlier recipe history (a one-epoch lr 2e-5 smoke run and the 3-epoch lr 5e-5 run of 2026-09-20/21, both scored on
+test) predates this rule and is not a selection record.
+
 ## Recorded executions
 
 Notebook identity is the Git blob id of `tutorials/xoftr_image_matching_colab.ipynb` (verify with
