@@ -151,3 +151,33 @@ def test_evaluation_report_with_and_without_a_reference():
     report = evaluation_report(result, {"homography": shift, "size": image0.size})
     assert report["verdict"] == "sample-sanity" and report["metrics"][0]["value"] == 1.0
     assert evaluation_report(result)["verdict"] == "not-measurable"
+
+
+def test_epoch_selection_needs_a_margin_over_the_frozen_epoch(monkeypatch):
+    """XOF-m10: an epoch replaces the frozen model only if validation precision at 3 px gains more than
+    selection_margin (default 0.01, the notebook's `flat` tolerance); otherwise epoch 0 is kept."""
+    records = make_pairs([{"id": f"r{i}", "image": textured_image(i, (128, 96))} for i in range(6)], tier="easy")
+
+    def scripted(values):
+        it = iter(values)
+
+        def fake_evaluate(_records):
+            p = next(it)
+            return {"precision_3px": p, "homography_acc_3px": 0.5, "inliers_per_pair": 1.0, "matches_per_pair": 1.0, "n": 2}
+
+        return fake_evaluate
+
+    assert pl.SELECTION_MARGIN == 0.01
+    for values, margin, want in (
+        ([0.900, 0.905, 0.909], 0.01, 0),  # +0.009 is within the margin: the frozen model stays
+        ([0.900, 0.905, 0.915], 0.01, 2),  # +0.015 clears it
+        ([0.900, 0.920, 0.915], 0.01, 1),  # the best eligible epoch wins
+        ([0.900, 0.905, 0.902], 0.0, 1),  # margin 0 restores the old any-gain rule
+    ):
+        pipe = _pipe()
+        monkeypatch.setattr(pipe, "evaluate", scripted(values))
+        result = pipe.adapt(records[:4], records[4:], epochs=2, lr=1e-4, batch_size=2, trainable_coarse_layers=1, selection_margin=margin)
+        assert result["best_epoch"] == want, (values, margin, result["best_epoch"])
+        assert result["selection_margin"] == margin and f"more than {margin:g}" in result["selection"]
+    with pytest.raises(ValueError, match="selection_margin"):
+        _pipe().adapt(records[:4], records[4:], epochs=1, selection_margin=-0.1)

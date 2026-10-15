@@ -2,7 +2,8 @@
 homography pairs with exact references, validation, splitting, BYOD loaders and CSV export.
 
 The images are **real**: 360 CC0-licensed, research-grade iNaturalist photographs of six North American bird
-species (the fleet's SigLIP sample; 60 per species, one per observer), pinned here by photo id, byte size and
+species (the fleet's SigLIP sample; 60 per species, at most one photograph per observer within a species, but
+222 observers in all, 53 of whom contribute to more than one split under the default seed), pinned here by photo id, byte size and
 SHA-256 of the served `medium` JPEG and fetched from the iNaturalist open-data bucket at run time, refused on any
 byte-size or SHA-256 mismatch; the repository redistributes none of them, and every record keeps its
 observation page and observer login. Each photograph becomes one **pair**: the photograph (long side scaled to
@@ -3783,9 +3784,22 @@ def sample_homography(size: tuple[int, int], rng: random.Random, params: Mapping
     return perspective @ similarity
 
 
+# Pillow puts pixel centres at half-integer coordinates (pixel i spans [i, i+1)); the reference H, the evaluator
+# (reprojection_errors, corner_error), the coarse ground truth and the matcher's keypoints use integer pixel
+# centres. Rendering with C·H·C⁻¹ (C shifts by +0.5 px) makes the drawn warp exactly H in integer-centre
+# coordinates; H itself is kept for scoring (the convention fixed in lightglue-matching-pipeline a51be97).
+PIXEL_CENTRE_SHIFT = np.array([[1.0, 0.0, 0.5], [0.0, 1.0, 0.5], [0.0, 0.0, 1.0]])
+
+
+def pillow_homography(homography: np.ndarray) -> np.ndarray:
+    """`homography` (integer-pixel-centre coordinates) expressed in Pillow's half-integer pixel-centre frame."""
+    return PIXEL_CENTRE_SHIFT @ np.asarray(homography, dtype=float) @ np.linalg.inv(PIXEL_CENTRE_SHIFT)
+
+
 def _perspective_coefficients(homography: np.ndarray) -> list[float]:
-    """PIL's PERSPECTIVE transform takes the inverse mapping (output pixel -> input pixel), 8 coefficients."""
-    inverse = np.linalg.inv(homography)
+    """PIL's PERSPECTIVE transform takes the inverse mapping (output pixel -> input pixel), 8 coefficients, in
+    Pillow's pixel frame: the integer-centred `homography` is shifted by half a pixel first (`pillow_homography`)."""
+    inverse = np.linalg.inv(pillow_homography(homography))
     inverse = inverse / inverse[2, 2]
     return [float(v) for v in inverse.ravel()[:8]]
 
