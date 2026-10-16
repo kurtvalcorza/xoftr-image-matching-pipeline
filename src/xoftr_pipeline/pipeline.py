@@ -45,6 +45,11 @@ MAX_EVAL_RECORDS = 5_000
 # An epoch replaces the frozen model only if validation precision at 3 px gains more than this (XOF-m10): the
 # same 0.01 tolerance the tutorial's verdicts call `flat`.
 SELECTION_MARGIN = 0.01
+# The vendored network's fine-level keypoints stand for image content half a pixel up-left of H's pixel-index frame
+# (measured on the pinned checkpoint, CPU, 6 real photographs x scale/rotation warps rendered with the fixed
+# C·H·C⁻¹ warp: fitted offset (-0.41, -0.51) px; after this shift the residual fit is (+0.09, -0.01) px). match() is
+# the one place keypoints are converted into the frame the reference H, the metrics and the baselines use.
+KEYPOINT_FRAME_OFFSET = -0.5
 MIN_SCORED_RECORDS = 30  # below this a scored set is labelled a small sample
 ARTIFACT_FORMAT = "org.valcorza.xoftr.adapter.v1"
 ARTIFACT_FORMAT_VERSION = "1.0"
@@ -218,8 +223,9 @@ class XoFTRPipeline:
         batch = {"image0": t0, "image1": t1}
         with torch.inference_mode():
             self.model(batch)
-        kpts0 = batch["mkpts0_f"].detach().cpu().numpy().astype(np.float32)
-        kpts1 = batch["mkpts1_f"].detach().cpu().numpy().astype(np.float32)
+        # Network keypoints -> H's pixel-index frame (KEYPOINT_FRAME_OFFSET), for both images alike.
+        kpts0 = (batch["mkpts0_f"].detach().cpu().numpy() + KEYPOINT_FRAME_OFFSET).astype(np.float32)
+        kpts1 = (batch["mkpts1_f"].detach().cpu().numpy() + KEYPOINT_FRAME_OFFSET).astype(np.float32)
         conf = batch["mconf_f"].detach().cpu().numpy().astype(np.float32)
         return {
             "kpts0": kpts0.reshape(-1, 2),
@@ -678,6 +684,7 @@ __all__ = [
     "COARSE_LAYERS",
     "DEFAULT_TRAINABLE_COARSE_LAYERS",
     "INPUT_SCHEMA",
+    "KEYPOINT_FRAME_OFFSET",
     "MAX_EVAL_RECORDS",
     "MIN_SCORED_RECORDS",
     "PARAMETER_COUNT",

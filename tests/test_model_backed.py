@@ -84,3 +84,34 @@ def test_cuda_path_matches_cpu(pipe):
     cuda = XoFTRPipeline.from_pretrained(weights_dir=WEIGHTS, device="cuda")
     a, b = pipe.match(pair["image0"], pair["image1"]), cuda.match(pair["image0"], pair["image1"])
     assert abs(len(a["kpts0"]) - len(b["kpts0"])) < 0.05 * max(1, len(a["kpts0"]))
+
+
+def test_keypoints_are_in_the_reference_frame_under_known_warps(pipe):
+    """Pinned checkpoint, CPU: a textured image warped (fixed C·H·C⁻¹ render) by a known translation and by a
+    1.25x scale about the centre. A translation cannot reveal a frame offset (it cancels), the scale can: the mean
+    residual vector of the inliers must shrink when KEYPOINT_FRAME_OFFSET is applied."""
+    from xoftr_pipeline import KEYPOINT_FRAME_OFFSET
+    from xoftr_pipeline.samples import warp_image
+
+    image = textured_image(5, (480, 360))
+    w, h = image.size
+    c = np.array([[1, 0, (w - 1) / 2], [0, 1, (h - 1) / 2], [0, 0, 1.0]])
+    warps = {"translation": np.array([[1, 0, 7.0], [0, 1, -4.0], [0, 0, 1.0]]), "scale": c @ np.diag([1.25, 1.25, 1.0]) @ np.linalg.inv(c)}
+    for name, H in warps.items():
+        result = pipe.match(image, warp_image(image, H))
+        errors = reprojection_errors(result["kpts0"], result["kpts1"], H)
+        keep = errors < 3
+        assert keep.sum() > 100, name
+        p = np.c_[result["kpts0"][keep], np.ones(keep.sum())] @ H.T
+        bias = (result["kpts1"][keep] - p[:, :2] / p[:, 2:]).mean(0)
+        # The translation keeps a ~0.1 px x-bias between image0 (fine-grid) and image1 (regressed) keypoints that no
+        # common frame shift can remove (measured 0.11-0.14 px); the scale warp carries no residual frame bias.
+        # On this synthetic texture the scale warp keeps a ~0.2 px content-dependent bias even after the shift (on 6
+        # real photographs it is 0.02 px, evidence in docs/release-verification.md), so the check is that the shift
+        # reduces it, not an absolute bound.
+        limit = 0.2 if name == "translation" else 0.35
+        assert np.hypot(*bias) < limit and float(errors[keep].mean()) < 0.5, (name, bias, float(errors[keep].mean()))
+        if name == "scale":  # without the shift the scale warp shows the offset as a bias
+            raw0, raw1 = result["kpts0"][keep] - KEYPOINT_FRAME_OFFSET, result["kpts1"][keep] - KEYPOINT_FRAME_OFFSET
+            q = np.c_[raw0, np.ones(len(raw0))] @ H.T
+            assert np.hypot(*(raw1 - q[:, :2] / q[:, 2:]).mean(0)) > np.hypot(*bias)

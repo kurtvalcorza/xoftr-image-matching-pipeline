@@ -486,7 +486,7 @@ TEMPLATE = {
                 "scene_errors = reprojection_errors(scene_match['kpts0'], scene_match['kpts1'], SHAPES_H)\n"
                 "checks = {{\n"
                 "    'same_length': len(scene_match['kpts0']) == len(scene_match['kpts1']) == len(scene_match['confidence']),\n"
-                "    'coordinates_inside_frames': bool(np.all(scene_match['kpts0'] >= 0) and np.all(scene_match['kpts0'][:, 0] < scene_match['size0'][0]) and np.all(scene_match['kpts0'][:, 1] < scene_match['size0'][1])),\n"
+                "    'coordinates_inside_frames': bool(np.all(scene_match['kpts0'] >= KEYPOINT_FRAME_OFFSET) and np.all(scene_match['kpts0'][:, 0] < scene_match['size0'][0]) and np.all(scene_match['kpts0'][:, 1] < scene_match['size0'][1])),\n"
                 "    'confidences_in_unit_interval': bool(np.all((scene_match['confidence'] > 0) & (scene_match['confidence'] <= 1))),\n"
                 "    'some_matches': len(scene_match['kpts0']) > 0,\n"
                 "}}\n"

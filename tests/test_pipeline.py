@@ -181,3 +181,17 @@ def test_epoch_selection_needs_a_margin_over_the_frozen_epoch(monkeypatch):
         assert result["selection_margin"] == margin and f"more than {margin:g}" in result["selection"]
     with pytest.raises(ValueError, match="selection_margin"):
         _pipe().adapt(records[:4], records[4:], epochs=1, selection_margin=-0.1)
+
+
+def test_match_reports_keypoints_in_the_reference_frame():
+    """Keypoint-frame trace (row-40 follow-up): match() is the one place the network's fine keypoints are shifted by
+    KEYPOINT_FRAME_OFFSET into H's pixel-index frame, identically for both images."""
+    pipe = _pipe()
+    img0, img1 = textured_image(1, (128, 96)), textured_image(2, (128, 96))
+    batch = {"image0": pl._to_tensor(img0), "image1": pl._to_tensor(img1)}
+    with torch.inference_mode():
+        pipe.model(batch)
+    result = pipe.match(img0, img1)
+    assert pl.KEYPOINT_FRAME_OFFSET == -0.5
+    assert np.allclose(result["kpts0"], batch["mkpts0_f"].numpy() + pl.KEYPOINT_FRAME_OFFSET)
+    assert np.allclose(result["kpts1"], batch["mkpts1_f"].numpy() + pl.KEYPOINT_FRAME_OFFSET)

@@ -167,6 +167,56 @@ was not run in that session.
 earlier recipe history (a one-epoch lr 2e-5 smoke run and the 3-epoch lr 5e-5 run of 2026-09-20/21, both scored on
 test) predates this rule and is not a selection record.
 
+## Keypoint frame (traced 2026-10-15, after the half-pixel render fix)
+
+- **Trace at the pinned revision.** Images are cropped from the origin to multiples of 8 and never resized. The
+  network gets no `scale0`/`scale1`, so no rescale exists whose origin could be wrong. The coarse keypoints are
+  `grid index × 8`. The fine keypoints are `fine index × 2` plus the sub-pixel regression (`modeling.py`, fine
+  matching).
+- **Measurement.** The probe is `keypoint_frame_probe.py`: CPU, pinned checkpoint, 6 real iNaturalist photographs at
+  640 px. Each photograph is rendered with the fixed C·H·C⁻¹ warp under a translation (7, −4), a 1.25× scale, and a
+  0.8× scale with a 20° rotation. A 180° rotation was also tried; XoFTR returns no inliers for it. The probe fits one
+  common offset `c` such that a keypoint p stands for content at p + c in both images.
+  - Fitted c = (−0.41, −0.51) px over 71,053 inliers.
+  - Mean inlier error: 0.318 → 0.286 px.
+  - Mean residual vector, scale 1.25: (−0.140, −0.115) → (−0.015, +0.010) px.
+  - Mean residual vector, scale 0.8 with 20° rotation: (+0.206, +0.058) → (−0.050, +0.069) px.
+  - After the shift, the refit gives c = (+0.09, −0.01) px.
+- **Fix.** `match()` adds `KEYPOINT_FRAME_OFFSET = −0.5` to both keypoint sets. It is the one place where keypoints
+  enter H's pixel-index frame.
+- **Not a frame effect.** A pure translation keeps a mean x-bias of about 0.11–0.14 px between image0 keypoints
+  (fine grid) and image1 keypoints (regressed). No common shift can remove it, so it is recorded here, not corrected.
+- **Synthetic texture.** On a synthetic texture (`tests/test_model_backed.py`), the scale-warp bias shrinks with the
+  shift but stays at about 0.24 px. The test asserts that the bias shrinks, not that it falls below an absolute bound.
+
+**Frozen matcher on the 96 test pairs.** CPU run of the package API on the branch, seed 42. This is not notebook
+evidence and not a hosted run. The images, H and the seeds are the same in every column; only the rendering of image1
+and the keypoint frame differ.
+
+| metric | old render (main) | fixed render | fixed render + kp offset (branch) |
+|---|---|---|---|
+| all precision_3px | 0.9251 | 0.9254 | 0.9252 |
+| all precision_1px | 0.7483 | 0.7509 | 0.7491 |
+| all median_error_px | 0.4701 | 0.4746 | 0.4698 |
+| all homography_acc_3px | 0.9792 | 0.9896 | 0.9896 |
+| all inliers_per_pair | 3263.8 | 3264.0 | 3263.7 |
+| easy precision_3px | 0.9838 | 0.9841 | 0.9840 |
+| easy precision_1px | 0.8914 | 0.8920 | 0.8915 |
+| easy median_error_px | 0.3879 | 0.3893 | 0.3873 |
+| easy homography_acc_3px | 1.0000 | 1.0000 | 1.0000 |
+| easy inliers_per_pair | 3911.0 | 3911.0 | 3910.7 |
+| hard precision_3px | 0.8665 | 0.8667 | 0.8665 |
+| hard precision_1px | 0.6051 | 0.6099 | 0.6066 |
+| hard median_error_px | 0.6435 | 0.6466 | 0.6417 |
+| hard homography_acc_3px | 0.9583 | 0.9792 | 0.9792 |
+| hard inliers_per_pair | 2616.5 | 2616.9 | 2616.7 |
+
+The old-render column reproduces the Colab T4 run of `552cb65`: 0.925 / 0.748 / 0.470 / 0.979. Both fixes move the
+test metrics by less than 0.005, apart from hard-tier homography accuracy, which rises from 0.958 to 0.979 (+1 pair of
+48). That change comes from the render fix. The keypoint shift lowers the median error from 0.4746 to 0.4698 px and
+precision at 1 px from 0.7509 to 0.7491. That is within noise, so the shift rests on the controlled-warp probe above,
+not on these test numbers.
+
 ## Recorded executions
 
 Notebook identity is the Git blob id of `tutorials/xoftr_image_matching_colab.ipynb` (verify with
