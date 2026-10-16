@@ -78,7 +78,10 @@ CODE_MARKERS = (
     "frozen_verdict = ",
     "adapt_result = pipe.adapt(train_records, val_records, epochs=EPOCHS, lr=LEARNING_RATE, batch_size=BATCH_SIZE, trainable_coarse_layers=TRAINABLE_COARSE_LAYERS, selection_margin=SELECTION_MARGIN, progress=report)",
     # Recipe selection on validation only, pre-registered grid behind a toggle (XOF-M5)
-    "RUN_RECIPE_GRID = False",
+    "RUN_RECIPE_GRID = True",
+    "pipe.load_artifact(grid_dirs[chosen])",
+    "frozen_vs_baselines = {",
+    "'keypoints_finite_and_inside_pixel_index_frames':",
     "RECIPE_GRID = ({'lr': 2e-5, 'epochs': 3}, {'lr': 5e-5, 'epochs': 3}, {'lr': 1e-4, 'epochs': 3})",
     "'recipe_selection': recipe_selection,",
     "adapted_test = pipe.evaluate(test_records)",

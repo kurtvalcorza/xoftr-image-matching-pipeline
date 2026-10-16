@@ -143,9 +143,11 @@ A known-failing default path in the supported runtime blocks release (REL11).
 
 ## Recipe selection (XOF-M5, pre-registered 2026-10-15)
 
-The fine-tuning recipe is selected on the **validation split only**; the test split is scored once, after the choice.
-The grid below was fixed on 2026-10-15, before any score of it on the half-pixel-corrected pairs (XOF-M4) existed, and
-is carried in the notebook's Section 7 as `RECIPE_GRID`:
+The revised selector uses the **validation split only**. In the default workflow, each fixed system is evaluated once
+on the test split. The grid below was fixed on 2026-10-15, before any score of it on the half-pixel-corrected pairs
+(XOF-M4) existed, and is carried in the notebook's Section 7 as `RECIPE_GRID`. Its default (B) came from an earlier
+choice made with test numbers in view, so this test split has informed development: test results are **exploratory**.
+A confirmatory claim would need new held-out photographs.
 
 | Candidate | Learning rate | Epoch cap | Trainable coarse layers | Batch | Seed |
 |---|---|---|---|---|---|
@@ -154,15 +156,18 @@ is carried in the notebook's Section 7 as `RECIPE_GRID`:
 | C | 1e-4 | 3 | 2 | 4 | 0 |
 
 Rule: within a candidate, an epoch is kept only if its validation precision at 3 px beats the frozen epoch 0 by more
-than `SELECTION_MARGIN` = 0.01 (otherwise epoch 0, the frozen matcher). Candidates are ranked by the kept epoch's
+than `SELECTION_MARGIN` = 0.01, a predeclared practical tolerance (otherwise epoch 0, the frozen matcher). Candidates are ranked by the kept epoch's
 validation precision at 3 px (ties: homography accuracy at 3 px). The best replaces B only if it beats B by more than
 0.01 on validation; a tie or a smaller gain keeps B.
 
-The grid adds two or three fine-tuning runs (about 9 minutes each on a T4, from the 517 s Section 7 of the Colab T4 run
-of `552cb65`), so it runs only with `RUN_RECIPE_GRID = True`; the default path trains B alone and records that the grid
-was not run in that session.
+`RUN_RECIPE_GRID = True` is the **default** (owner decision, 2026-10-16). Each candidate's selected adapter is saved
+under `outputs/xoftr_image_matching_recipe_grid/`. The winner is restored from its file and checked against its
+selection run (best epoch and validation history); it is not re-trained. **T4 time estimate** (not measured):
+Section 7 of the Colab T4 run of `552cb65` took 517 s for one candidate. Three candidates take about 1,551 s for that
+cell, inside the suite's 3,600 s cell timeout. The whole default path is about 1,581 + 2 × 517 ≈ 2,615 s (about 44
+min). Unticking the toggle trains B alone.
 
-**Validation table: pending.** No grid run exists yet. Until a hosted run with `RUN_RECIPE_GRID = True` is recorded here
+**Validation table: pending.** No grid run exists yet. Until a hosted run of the default path is recorded here
 (every candidate, every epoch, validation only), B is the pre-registered starting point, not a validated choice. The
 earlier recipe history (a one-epoch lr 2e-5 smoke run and the 3-epoch lr 5e-5 run of 2026-09-20/21, both scored on
 test) predates this rule and is not a selection record.
@@ -183,7 +188,14 @@ test) predates this rule and is not a selection record.
   - Mean residual vector, scale 0.8 with 20° rotation: (+0.206, +0.058) → (−0.050, +0.069) px.
   - After the shift, the refit gives c = (+0.09, −0.01) px.
 - **Fix.** `match()` adds `KEYPOINT_FRAME_OFFSET = −0.5` to both keypoint sets. It is the one place where keypoints
-  enter H's pixel-index frame.
+  enter H's pixel-index frame. This is an **empirical, checkpoint-specific frame correction** fitted on controlled
+  warps, not a derived coordinate identity. It was verified for the frozen checkpoint only; it was not refitted for
+  adapted weights, because that needs a GPU fine-tune per check. `match()` also returns the raw network coordinates
+  (`kpts0_network`, `kpts1_network`) and a `keypoint_frame` label. The notebook exports both coordinate sets in
+  `shapes.json`, and the correction is recorded in `provenance.json` and the result export.
+- **Coordinate check.** The Section 5 check now covers both keypoint arrays: finite, and inside the stated frame
+  (−0.5 to size − 0.5). There is no clipping. On 12 real test pairs (CPU), every keypoint lay at least 10.5 px inside
+  the frame.
 - **Not a frame effect.** A pure translation keeps a mean x-bias of about 0.11–0.14 px between image0 keypoints
   (fine grid) and image1 keypoints (regressed). No common shift can remove it, so it is recorded here, not corrected.
 - **Synthetic texture.** On a synthetic texture (`tests/test_model_backed.py`), the scale-warp bias shrinks with the
@@ -214,8 +226,22 @@ and the keypoint frame differ.
 The old-render column reproduces the Colab T4 run of `552cb65`: 0.925 / 0.748 / 0.470 / 0.979. Both fixes move the
 test metrics by less than 0.005, apart from hard-tier homography accuracy, which rises from 0.958 to 0.979 (+1 pair of
 48). That change comes from the render fix. The keypoint shift lowers the median error from 0.4746 to 0.4698 px and
-precision at 1 px from 0.7509 to 0.7491. That is within noise, so the shift rests on the controlled-warp probe above,
+precision at 1 px from 0.7509 to 0.7491. Both changes are below the predeclared 0.01 tolerance, so the shift rests on the controlled-warp probe above,
 not on these test numbers.
+
+## DLT rank check (Codex peer review #7, 2026-10-16)
+
+`dlt_homography` previously tested `sigma[-2] < 1e-12`. With four correspondences, the DLT matrix is 8 × 9 and
+`svd` returns only 8 singular values, so that test checked rank ≥ 7 and let rank-7 minimal RANSAC samples through
+(three collinear or repeated points). The function body is now identical to lightglue-matching-pipeline `68bb2e1`
+(shared spec): reject when the singular values are non-finite, `s[0] <= 0`, or fewer than 8 exceed `1e-10 * s[0]`;
+otherwise take `vt[-1]` from the full SVD. Tests cover a valid 4-point sample, a collinear sample, a repeated point,
+a numerically collinear sample, an overdetermined fit, NaN input and mismatched lengths.
+Old → new, CPU, frozen matcher on the 96 test pairs. The branch code (fixed render and keypoint shift) matched once,
+then scored with each rank test: homography accuracy at 3 px 0.9896 → 0.9896 (easy 1.000 → 1.000, hard 0.979 →
+0.979); 0 of 96 pairs changed corner error at 4 decimal places. Precision and median error do not depend on the DLT
+and stayed at 0.9252 and 0.4698 px. So the bug did not affect this run's numbers; the fix closes the degenerate-sample
+path.
 
 ## Recorded executions
 

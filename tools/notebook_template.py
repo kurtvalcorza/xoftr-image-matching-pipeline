@@ -153,7 +153,7 @@ SECTION7_CODE = '''EPOCHS = 3  # @param {{type:"integer"}}
 LEARNING_RATE = 5e-5  # @param {{type:"number"}}
 BATCH_SIZE = 4  # @param {{type:"integer"}}
 TRAINABLE_COARSE_LAYERS = 2  # @param {{type:"integer"}}
-RUN_RECIPE_GRID = False  # @param {{type:"boolean"}}
+RUN_RECIPE_GRID = True  # @param {{type:"boolean"}}
 
 # Pre-registered on 2026-10-15, before any score of these candidates on the half-pixel-corrected pairs existed.
 RECIPE_GRID = ({{'lr': 2e-5, 'epochs': 3}}, {{'lr': 5e-5, 'epochs': 3}}, {{'lr': 1e-4, 'epochs': 3}})
@@ -186,37 +186,45 @@ if settings != default_settings:
     print({{'note': 'changed settings: this run starts again from the pinned base and replaces the default results of Sections 8-9; Section 10 compares a change side by side instead', 'settings': settings}})
 t0 = time.perf_counter()
 validation_table = []
-if RUN_RECIPE_GRID:
-    if settings != default_settings:
-        raise ValueError('RUN_RECIPE_GRID runs the pre-registered grid at the default settings: reset EPOCHS, LEARNING_RATE, BATCH_SIZE and TRAINABLE_COARSE_LAYERS first')
+grid_active = RUN_RECIPE_GRID and settings == default_settings
+if RUN_RECIPE_GRID and not grid_active:
+    print({{'note': 'RUN_RECIPE_GRID runs the pre-registered grid at the default settings only; with changed settings this run trains the changed configuration alone'}})
+if grid_active:
     # Every candidate starts from the pinned base and is scored on the 48 validation pairs only; the test split is not touched.
-    candidates = [c for c in RECIPE_GRID if c != PRESELECTED_RECIPE] + [PRESELECTED_RECIPE]
-    grid_results = {{}}
-    for candidate in candidates:
+    grid_dir = Path('outputs/{stem}_recipe_grid')
+    shutil.rmtree(grid_dir, ignore_errors=True)
+    grid_results, grid_dirs = {{}}, {{}}
+    for candidate in RECIPE_GRID:
         print({{'candidate': candidate}})
-        result = run_recipe(candidate['lr'], candidate['epochs'])
-        grid_results[(candidate['lr'], candidate['epochs'])] = result
-        validation_table.append({{'lr': candidate['lr'], 'epochs': candidate['epochs'], 'val_precision_3px_by_epoch': [round(h['val']['precision_3px'], 4) for h in result['history']], 'best_epoch': result['best_epoch'], 'kept_val_precision_3px': round(kept_validation(result)[0], 4), 'kept_val_homography_acc_3px': round(kept_validation(result)[1], 4)}})
+        key = (candidate['lr'], candidate['epochs'])
+        grid_results[key] = run_recipe(*key)
+        # Each candidate's selected adapter is kept, so the winner is restored from its file instead of being trained again.
+        grid_dirs[key] = pipe.save_artifact(grid_dir / f"lr{{candidate['lr']:g}}_e{{candidate['epochs']}}", metadata={{'tutorial': '{stem}', 'recipe_candidate': candidate}})
+        validation_table.append({{'lr': candidate['lr'], 'epochs': candidate['epochs'], 'val_precision_3px_by_epoch': [round(h['val']['precision_3px'], 4) for h in grid_results[key]['history']], 'best_epoch': grid_results[key]['best_epoch'], 'kept_val_precision_3px': round(kept_validation(grid_results[key])[0], 4), 'kept_val_homography_acc_3px': round(kept_validation(grid_results[key])[1], 4)}})
     preselected = (PRESELECTED_RECIPE['lr'], PRESELECTED_RECIPE['epochs'])
     best = max(grid_results, key=lambda k: kept_validation(grid_results[k]))
     chosen = best if kept_validation(grid_results[best])[0] - kept_validation(grid_results[preselected])[0] > SELECTION_MARGIN else preselected
-    # The pre-selected candidate ran last, so the pipeline already holds it; another choice is re-run to hold its adapter.
-    adapt_result = grid_results[preselected] if chosen == preselected else run_recipe(*chosen)
+    adapt_result = grid_results[chosen]
+    pipe.load_artifact(grid_dirs[chosen])
+    restored = pipe.adapter or {{}}
+    if restored.get('best_epoch') != adapt_result['best_epoch'] or [h.get('val') for h in restored.get('history', [])] != [h.get('val') for h in adapt_result['history']]:
+        raise RuntimeError('the restored winning adapter does not match its selection run')
     LEARNING_RATE, EPOCHS = chosen
 else:
     adapt_result = pipe.adapt(train_records, val_records, epochs=EPOCHS, lr=LEARNING_RATE, batch_size=BATCH_SIZE, trainable_coarse_layers=TRAINABLE_COARSE_LAYERS, selection_margin=SELECTION_MARGIN, progress=report)
     chosen = (LEARNING_RATE, EPOCHS)
 adapt_seconds = round(time.perf_counter() - t0, 1)
 recipe_selection = {{
-    'basis': 'validation split only; the test split is scored once, in Section 8, after the choice',
+    'basis': 'candidate selection uses the validation split only; each fixed system is evaluated once on the test split in the default workflow',
     'grid': list(RECIPE_GRID),
     'preselected': PRESELECTED_RECIPE,
     'rule': RECIPE_RULE,
     'selection_margin': SELECTION_MARGIN,
-    'grid_run_this_session': RUN_RECIPE_GRID,
+    'grid_run_this_session': grid_active,
+    'winner_restored_from': str(grid_dirs[chosen]) if grid_active else None,
     'validation_table': validation_table,
     'chosen': {{'lr': chosen[0], 'epochs': chosen[1]}},
-    'status': 'chosen on validation in this run' if RUN_RECIPE_GRID else 'grid not run in this session (RUN_RECIPE_GRID = False): the pre-selected configuration ran, with its epoch chosen on validation; the grid itself has not been scored in this session',
+    'status': 'chosen on validation in this run' if grid_active else 'grid not run in this session: the configuration above ran alone, with its epoch chosen on validation; the grid itself has not been scored in this session',
 }}
 print({{'recipe_selection': {{k: v for k, v in recipe_selection.items() if k != 'validation_table'}}}})
 for row in validation_table:
@@ -293,13 +301,14 @@ TEMPLATE = {
         "drawn-shape pair through the inference contract with an input manifest and a rejection probe, measures the frozen "
         "matcher's precision at 3 px, inliers per pair and homography accuracy over the 96 test pairs beside the identity-guess "
         "and patch-nearest-neighbour baselines, runs a bounded fine-tuning of the coarse transformer's last two layers and "
-        "coarse projection with the upstream coarse focal loss and validation-only epoch selection (an epoch must beat the frozen matcher by more than 0.01), scores the held-out "
+        "coarse projection with the upstream coarse focal loss and validation-only recipe and epoch selection over a pre-registered three-candidate grid (an epoch must beat the frozen matcher by more than the predeclared 0.01 tolerance), scores the held-out "
         "pairs again per tier, re-matches the drawn pair with the adapted model, exports the adapter as safetensors with a "
         "manifest, and reloads that artifact into a fresh pipeline to verify match parity. The default path needs no repository "
         "clone, no DIMER worker or service, no credential, no upload dialog and no configuration edit (NOTEBOOK_SPEC 2.5 §5). "
         "Dense matching at 640 px is heavy without a GPU: a CPU run of the package API at revision `b0bf4a3` (20 September 2026) took "
         "about 41 minutes after the downloads (expect longer on a 2-vCPU hosted runtime), and the Colab T4 run of revision `552cb65` (blob `9e0fd89d`, 10 October 2026) took about "
-        "26 minutes end to end (1,581 s); neither was re-run for this revision. A CUDA runtime is used automatically when present."
+        "26 minutes end to end (1,581 s); neither was re-run for this revision. With the recipe grid on (the default), the path is "
+        "estimated at about 44 minutes on a T4 (not yet measured). A CUDA runtime is used automatically when present."
     ),
     "byod": (
         "After the tutorial workflow completes, set `USE_BYOD = True` in Section 4 and either set `BYOD_PATH` to a zip or folder "
@@ -358,7 +367,7 @@ TEMPLATE = {
     "learning_objectives": (
         "install the pinned runtime; read what the carried package guarantees; stage and digest-verify the immutable "
         "upstream snapshot into a vendored network; build a labelled pair set with exact references from digest-pinned "
-        "photographs, validate it and split it by photograph without leakage; match a drawn pair through the public API and "
+        "photographs, validate it and split it by photograph without detected exact image overlap; match a drawn pair through the public API and "
         "read match confidences correctly (thresholded, uncalibrated, no abstention); measure the frozen matcher's precision, "
         "inlier count and homography accuracy beside two non-neural baselines and read the per-tier breakdown; run a bounded "
         "fine-tuning with the upstream coarse focal loss, explicit hyperparameters and validation-only epoch and recipe selection; "
@@ -376,7 +385,7 @@ TEMPLATE = {
     ),
     "prerequisites": [
         "- **Learner:** basic Python and Colab or Jupyter familiarity; no prior experience with feature matching or fine-tuning. The notebook explains coarse-to-fine matching, dual-softmax, reprojection error, DLT and RANSAC, corner error, the focal loss, the tiers and the adapter where they are first used; the Glossary repeats them.",
-        "- **Runtime:** a fresh supported **Linux x86_64** runtime (Google Colab, Kaggle or Linux Jupyter); a GPU is strongly recommended. Section 1 builds its own Python 3.12.12 environment from a hash-locked list of manylinux wheels, so the kernel's own Python version does not matter and nothing is installed into it. The default path runs on CPU (float32) and uses CUDA automatically when available. CPU is slow: dense matching at 640 px costs about 2.5 s per pair, and a CPU run of the package API at revision `b0bf4a3` (20 September 2026, snapshot and photographs cached; not re-run for this revision) took about 41 minutes in all, most of it the 3 epochs of fine-tuning; a 2-vCPU hosted runtime will be slower still. The Colab T4 run of revision `552cb65` (blob `9e0fd89d`, 10 October 2026) took about 26 minutes end to end (1,581 s). The optional recipe grid in Section 7 (`RUN_RECIPE_GRID`) adds two or three more fine-tuning runs, about 9 minutes each on a T4. The pinned `torch==2.14.0` install is the large download of the run; the checkpoint is 44 MB and the photographs about 39 MB.",
+        "- **Runtime:** a fresh supported **Linux x86_64** runtime (Google Colab, Kaggle or Linux Jupyter); a GPU is strongly recommended. Section 1 builds its own Python 3.12.12 environment from a hash-locked list of manylinux wheels, so the kernel's own Python version does not matter and nothing is installed into it. The default path runs on CPU (float32) and uses CUDA automatically when available. CPU is slow: dense matching at 640 px costs about 2.5 s per pair, and a CPU run of the package API at revision `b0bf4a3` (20 September 2026, snapshot and photographs cached; not re-run for this revision) took about 41 minutes in all, most of it the 3 epochs of fine-tuning; a 2-vCPU hosted runtime will be slower still. The Colab T4 run of revision `552cb65` (blob `9e0fd89d`, 10 October 2026) took about 26 minutes end to end (1,581 s). Section 7's recipe grid (`RUN_RECIPE_GRID`, on by default) trains three candidates instead of one, about 9 minutes each on a T4 (one took 517 s in that run), so the default path is estimated at about 44 minutes on a T4 (2,615 s = 1,581 s + 2 × 517 s; not yet measured); untick it to train only the pre-selected configuration. The pinned `torch==2.14.0` install is the large download of the run; the checkpoint is 44 MB and the photographs about 39 MB.",
         "- **Knowledge:** basic Python and PIL; what a homography is and why a warped copy of an image has an exact correspondence for every pixel; what precision, reprojection error and RANSAC measure and why none is a human judgement; why a high match confidence is not a correct match.",
         "- **Data contract:** records are `{id, image0, image1, homography}` — two PIL images (or files decodable by Pillow) with sides in [64, 1024] px (the sample is built at 640 px on the long side, sides multiples of 8) and a finite, non-singular 3 × 3 reference mapping image0 pixels to image1 pixels. Ids match `[A-Za-z0-9_.:-]{1,64}` and are unique; a training split needs 4..5,000 records and validation and test at least one each, so with the default 15 % + 20 % image hold-out the effective BYOD minimum is **6 photographs** (`min_byod_records()`); the sample is split by photograph (stratified per species) after pixel-digest de-duplication so no photograph lands in two splits. BYOD accepts one zip of photographs, from which the same seeded pairs are synthesised.",
         "- **Validation is structural, not semantic:** every image is opened and decoded and every `H` checked for shape and rank, but nothing checks that `image1` really is `image0` under `H` — a wrong reference is scored without complaint, and a pair of unrelated photographs is matched without complaint.",
@@ -432,7 +441,7 @@ TEMPLATE = {
                 "under a fixed reference homography, a different image family from the photographs and a pair the matcher will "
                 "be asked to match again after adaptation. `validate_inputs` applies exactly the checks `match` applies and "
                 "returns an input manifest; a remote URL is validated too and its rejection recorded as a finding. `match` returns "
-                "`kpts0`, `kpts1` and one confidence per correspondence, **ordered as the fine stage emits them**; the "
+                "`kpts0`, `kpts1` and one confidence per correspondence, **ordered as the fine stage emits them**, in the reference `H`'s pixel-index frame (the image spans -0.5 to width - 0.5) after an **empirical, checkpoint-specific** -0.5 px correction — fitted on controlled warps for the frozen checkpoint only, not a derived identity; the raw network coordinates come back as `kpts0_network` / `kpts1_network` and are exported in Section 9, and a residual x-bias of about 0.1 px under translation remains as localisation error; the "
                 "per-pair `evaluation_report` on a drawing is `sample-sanity` — plumbing evidence, not a measurement; whether the "
                 "matcher is *right* is what Section 6 measures on 96 photograph pairs."
             ),
@@ -486,7 +495,7 @@ TEMPLATE = {
                 "scene_errors = reprojection_errors(scene_match['kpts0'], scene_match['kpts1'], SHAPES_H)\n"
                 "checks = {{\n"
                 "    'same_length': len(scene_match['kpts0']) == len(scene_match['kpts1']) == len(scene_match['confidence']),\n"
-                "    'coordinates_inside_frames': bool(np.all(scene_match['kpts0'] >= KEYPOINT_FRAME_OFFSET) and np.all(scene_match['kpts0'][:, 0] < scene_match['size0'][0]) and np.all(scene_match['kpts0'][:, 1] < scene_match['size0'][1])),\n"
+                "    'keypoints_finite_and_inside_pixel_index_frames': bool(all(np.isfinite(k).all() and np.all(k >= -0.5) and np.all(k[:, 0] <= size[0] - 0.5) and np.all(k[:, 1] <= size[1] - 0.5) for k, size in ((scene_match['kpts0'], scene_match['size0']), (scene_match['kpts1'], scene_match['size1'])))),\n"
                 "    'confidences_in_unit_interval': bool(np.all((scene_match['confidence'] > 0) & (scene_match['confidence'] <= 1))),\n"
                 "    'some_matches': len(scene_match['kpts0']) > 0,\n"
                 "}}\n"
@@ -537,8 +546,9 @@ TEMPLATE = {
                 "print({{'definitions': frozen_test['definitions']}})\n"
                 "worst = sorted(frozen_test['per_pair'], key=lambda r: r['precision_3px'])[:3]\n"
                 "print({{'weakest_pairs_frozen': [{{k: r[k] for k in ('id', 'tier', 'n_matches', 'precision_3px', 'corner_error_px')}} for r in worst]}})\n"
-                "frozen_verdict = 'frozen matcher above both baselines' if (frozen_test['precision_3px'] > baselines['patch_neighbour']['precision_3px'] and frozen_test['homography_acc_3px'] > baselines['identity']['homography_acc_3px']) else 'a baseline matches or beats the frozen matcher'\n"
-                "print({{'frozen_vs_baselines': frozen_verdict}})"
+                "frozen_vs_baselines = {{f'{{metric}}_vs_{{name}}': ('frozen above' if frozen_test[metric] > baselines[name][metric] else 'baseline matches or beats') for metric in ('precision_3px', 'homography_acc_3px') for name in ('identity', 'patch_neighbour')}}\n"
+                "frozen_verdict = 'frozen matcher above both baselines on precision at 3 px and homography accuracy at 3 px' if all(v == 'frozen above' for v in frozen_vs_baselines.values()) else 'a baseline matches or beats the frozen matcher'\n"
+                "print({{'frozen_vs_baselines': frozen_verdict, 'detail': frozen_vs_baselines}})"
             ),
         },
         {
@@ -559,25 +569,25 @@ TEMPLATE = {
                 "(pairs are not stacked: sizes differ), gradient clipping at 1.0, seeded order, no scheduler. Epoch 0 records the "
                 "frozen matcher's validation metrics; every epoch is scored on the 48 validation pairs, and the epoch with the "
                 "highest validation **precision at 3 px** is kept (ties broken by homography accuracy) — but only if it beats the "
-                "frozen epoch 0 by more than `SELECTION_MARGIN` (0.01, the same tolerance Section 8 calls `flat`); otherwise epoch 0, "
+                "frozen epoch 0 by more than `SELECTION_MARGIN` (0.01, a predeclared practical tolerance — the same one Section 8 uses for `flat`); otherwise epoch 0, "
                 "the frozen matcher, is kept.\n\n"
-                "**How the recipe is selected (validation only).** The recipe — learning rate and epoch cap — is chosen on the "
-                "48 validation pairs and never on the test split, which Section 8 scores once, after the choice. The candidate "
-                "grid was pre-registered on 15 October 2026, before any score of it on these (half-pixel-corrected) pairs existed: "
-                "learning rate 2e-5, 5e-5 or 1e-4, each with up to 3 epochs, 2 trainable layers, `BATCH_SIZE` 4 and seed 0. Why "
-                "this grid: the learning rate is the setting a short fine-tune is most sensitive to, and the only one the build "
-                "history ever changed (2e-5 in a one-epoch smoke run, 5e-5 in the recorded run); 1e-4 brackets it from above. "
-                "Each candidate's per-epoch validation history already covers 1, 2 and 3 epochs, so the epoch cap needs no extra "
-                "runs, and the number of trainable layers stays at 2 because Section 10 is the experiment that changes it. Three "
-                "candidates is about what 48 pairs can rank. **Selection rule:** within a candidate the margin rule above picks "
-                "the epoch; candidates are ranked by that epoch's validation precision at 3 px (ties: homography accuracy); the "
-                "best replaces the pre-selected lr 5e-5 only if it beats it by more than 0.01 on validation, so a tie or a smaller "
-                "gain keeps the default. The grid adds two or three fine-tuning runs (about 9 minutes each on a T4), which would "
-                "push the default path well past 30 minutes, so it sits behind `RUN_RECIPE_GRID`, off by default: Run all then "
-                "trains only the pre-selected configuration, still with its epoch chosen on validation, and prints a "
-                "`recipe_selection` record saying the grid was not run in this session. Tick it to run the grid; the validation "
-                "table is printed and written to the evaluation report. Until a hosted grid run is recorded in "
-                "`docs/release-verification.md`, lr 5e-5 is the pre-registered starting point, not a validated choice.\n\n"
+                "**How the recipe is selected (validation only).** The revised selector uses the 48 validation pairs only; no "
+                "candidate consults the test split. The candidate grid was fixed on 15 October 2026, before any half-pixel-corrected "
+                "score of it existed: learning rate 2e-5, 5e-5 or 1e-4, each with up to 3 epochs, 2 trainable layers, `BATCH_SIZE` 4 "
+                "and seed 0. Its default, lr 5e-5 for 3 epochs, came from an earlier choice made with test numbers in view, so this "
+                "test split has informed development and its results below are **exploratory**; a confirmatory claim would need new "
+                "held-out photographs. Why this grid: the learning rate is the setting a short fine-tune is most sensitive to, and "
+                "the only one the build history ever changed (2e-5 in a one-epoch smoke run, 5e-5 in the recorded run); 1e-4 "
+                "brackets it from above. Each candidate's per-epoch validation history already covers 1, 2 and 3 epochs, so the "
+                "epoch cap needs no extra runs, and the number of trainable layers stays at 2 because Section 10 is the experiment "
+                "that changes it. **Selection rule:** within a candidate the margin rule above picks the epoch; candidates are "
+                "ranked by that epoch's validation precision at 3 px (ties: homography accuracy); the best replaces the "
+                "pre-selected lr 5e-5 only if it beats it by more than the predeclared 0.01 tolerance, so a tie or a smaller gain "
+                "keeps the default. Each candidate's selected adapter is saved under `outputs/{stem}_recipe_grid/`, and the winner "
+                "is restored from its file and checked against its selection run instead of being trained again. "
+                "`RUN_RECIPE_GRID` is **on by default**: it trains three candidates (about 9 minutes each on a T4). Untick it to "
+                "train only the pre-selected configuration, still with its epoch chosen on validation; the `recipe_selection` "
+                "record then says the grid was not run. The validation table is printed and written to the evaluation report.\n\n"
                 "Watch the training loss (about 0.72 at epoch 1 and 0.61 at epoch 3 in the Colab T4 run of revision `552cb65` (blob `9e0fd89d`, 10 October 2026), recorded before this revision's half-pixel rendering fix and selection margin, so not re-run here) and the "
                 "validation precision: the checkpoint already fits this task, so the selector's job is as much to refuse an epoch "
                 "that hurts as to keep one that helps. That run kept epoch 3 of 3 on validation precision at 3 px 0.908 frozen → "
@@ -593,22 +603,30 @@ TEMPLATE = {
         },
         {
             "md": (
-                "**What to notice:** the validation precision at 3 px per epoch, `best_epoch` and the `recipe_selection` record.\n\n<details><summary>Check your reasoning</summary>Very little. In the Colab T4 run of revision `552cb65` (blob `9e0fd89d`, 10 October 2026), recorded before this revision's half-pixel rendering fix and selection margin, so not re-run here, validation precision at 3 px went 0.908 → 0.906 → 0.908 → 0.910 over epochs 0–3 and epoch 3 was kept on a +0.002 gain, about a tenth of a pair in 48. Under this revision's 0.01 margin that gain would not clear the bar and epoch 0 would be kept. If no epoch clears it, the adapted matcher is the frozen one, and that is a valid result.</details>"
+                "**What to notice:** the validation precision at 3 px per epoch, `best_epoch` and the `recipe_selection` record.\n\n<details><summary>Check your reasoning</summary>Very little. In the Colab T4 run of revision `552cb65` (blob `9e0fd89d`, 10 October 2026), recorded before this revision's half-pixel rendering fix and selection margin, so not re-run here, validation precision at 3 px went 0.908 → 0.906 → 0.908 → 0.910 over epochs 0–3 and epoch 3 was kept on a +0.002 gain. Under this revision's 0.01 margin that gain would not clear the bar and epoch 0 would be kept. If no epoch clears it, the adapted matcher is the frozen one, and that is a valid result.</details>"
             ),
         },
         {
             "md": (
                 "## 8. Held-out evaluation\n\n"
-                "The test pairs were never used for training, epoch selection or recipe selection, and no photograph appears in two splits. The "
+                "Candidate selection uses the validation split only, and each fixed system is evaluated once on the test split in the "
+                "default workflow. This test split has, however, informed earlier development of this notebook (an earlier recipe "
+                "was chosen with its test numbers in view), so these results are **exploratory**, not confirmatory. No photograph "
+                "appears in two splits by decoded-pixel digest; resized or recompressed near-duplicates and related photographs are "
+                "not checked. The "
                 "adapted matcher is scored exactly as the frozen one was in Section 6, the three systems are put side by side on "
                 "every reading, and the per-tier breakdown is repeated. Read it in this order: **precision at 3 px** first (the "
                 "metric the epoch was selected on — the Colab T4 run of revision `552cb65` (blob `9e0fd89d`, 10 October 2026), recorded before this revision's half-pixel rendering fix and selection margin, so not re-run here, measured 0.925 → 0.930), then the inlier "
                 "count and the homography accuracy (0.979 → 0.979 in that run), then the tiers (easy 0.984 → 0.985, hard 0.866 → 0.876 in that run). "
-                "The cell records verdicts — `improved`, `flat` (within 0.01) or `worse` on precision at 3 px and homography "
+                "The cell records verdicts — `improved`, `flat` (within the predeclared practical tolerance of 0.01) or `worse` on precision at 3 px and homography "
                 "accuracy — and `paired_per_pair`, how many test pairs got better or worse, instead of asserting them: the epoch "
                 "is chosen on validation, so the test split can move either way, and export, reload and the result still run. Ninety-six pairs from one seeded split give **no dispersion estimate**; the "
                 "deltas are sample-sanity evidence that the adaptation contract works, not a benchmark, and a result on warped "
                 "bird photographs says nothing about your scenes until you measure them.\n\n"
+                "**Reading the numbers:** precision at 3 px is the *mean per-pair* fraction of returned matches within 3 px, and "
+                "the median error is the *pooled median among matches below 3 px*; read them together with the match, inlier and "
+                "homography counts. Homography accuracy fits RANSAC (500 iterations) around a normalised DLT on the matches. These "
+                "are this repository's own implementations, not a benchmark protocol such as HPatches.\n\n"
                 "**Predict before running:** if overall precision moves by half a point, how many of the 96 test pairs will have "
                 "got worse?"
             ),
@@ -682,7 +700,7 @@ TEMPLATE = {
                 "scene_rows['adapted'] = {{'n_matches': int(len(adapted_scene_match['kpts0'])), 'precision_3px': float((adapted_scene_errors < 3).mean()) if len(adapted_scene_errors) else 0.0, 'median_error_px': float(np.median(adapted_scene_errors)) if len(adapted_scene_errors) else None}}\n"
                 "print({{'scene': scene_rows, 'scene_after_adaptation': {{m['id']: round(m['value'], 3) for m in adapted_scene['metrics']}}, 'verdict': adapted_scene['verdict']}})\n"
                 "with open('outputs/{stem}_shapes.json', 'w', encoding='utf-8') as handle:\n"
-                "    json.dump({{'reference_homography': SHAPES_H.tolist(), 'frozen': {{'kpts0': scene_match['kpts0'].tolist(), 'kpts1': scene_match['kpts1'].tolist(), 'confidence': scene_match['confidence'].tolist()}}, 'adapted': {{'kpts0': adapted_scene_match['kpts0'].tolist(), 'kpts1': adapted_scene_match['kpts1'].tolist(), 'confidence': adapted_scene_match['confidence'].tolist()}}, 'summary': scene_rows}}, handle)\n\n"
+                "    json.dump({{'reference_homography': SHAPES_H.tolist(), 'keypoint_frame': scene_match['keypoint_frame'], 'frozen': {{'kpts0': scene_match['kpts0'].tolist(), 'kpts1': scene_match['kpts1'].tolist(), 'confidence': scene_match['confidence'].tolist(), 'kpts0_network': scene_match['kpts0_network'].tolist(), 'kpts1_network': scene_match['kpts1_network'].tolist()}}, 'adapted': {{'kpts0': adapted_scene_match['kpts0'].tolist(), 'kpts1': adapted_scene_match['kpts1'].tolist(), 'confidence': adapted_scene_match['confidence'].tolist(), 'kpts0_network': adapted_scene_match['kpts0_network'].tolist(), 'kpts1_network': adapted_scene_match['kpts1_network'].tolist()}}, 'summary': scene_rows}}, handle)\n\n"
                 "artifact_dir = Path('outputs/{stem}_adapter')\n"
                 "shutil.rmtree(artifact_dir, ignore_errors=True)\n"
                 "pipe.save_artifact(artifact_dir, metadata={{'tutorial': '{stem}', 'data_source': data_source}})\n"
@@ -711,6 +729,7 @@ TEMPLATE = {
                 "    'comparison': comparison,\n"
                 "    'artifact': {{'dir': str(artifact_dir), 'sha256': artifact_manifest['files'][0]['sha256'], 'bytes': artifact_manifest['files'][0]['bytes'], 'tensors': len(artifact_manifest['tensors'])}},\n"
                 "    'reload_parity': parity,\n"
+                "    'keypoint_frame': {{'offset_px': KEYPOINT_FRAME_OFFSET, 'note': KEYPOINT_FRAME_NOTE, 'verified_for': 'frozen checkpoint only'}},\n"
                 "    'runtime': {{'python': platform.python_version(), 'torch': torch.__version__, 'numpy': numpy.__version__, 'device': str(pipe.device), 'dtype': 'float32', 'checkpoint_source': pipe.checkpoint_source}},\n"
                 "}}\n"
                 "with open('outputs/{stem}_result.json', 'w', encoding='utf-8') as handle:\n"
@@ -732,7 +751,7 @@ TEMPLATE = {
                 "the verified snapshot, so it starts from the checkpoint and never touches the default `pipe`; it writes only to "
                 "`outputs/{stem}_experiment/`, prints the default and the changed run side by side (epoch 0 must match), and "
                 "checks that the default exports are byte-identical afterwards. Read the validation curves first: they are the only "
-                "basis for preferring one setting. The test row is a one-off look after the fact, not an input to any choice — "
+                "basis for preferring one setting. The test row is **exploratory test reuse**, not an input to any choice — "
                 "picking the setting with the better test number would turn the test split into a second validation split. "
                 "On a GPU it takes about as long as Section 7; "
                 "leave it off on a CPU.\n\n"
@@ -777,7 +796,7 @@ TEMPLATE = {
             "md": (
                 "**Observe → Explain.** Compare the two validation curves first (epoch 0 must be equal), then glance at the `test_one_off_look_not_a_selection_input` rows.\n\n"
                 "<details><summary>Check your reasoning</summary>The checkpoint already fits this task, so more trainable layers "
-                "mostly add ways to drift: expect differences of a pair or two in 48 on validation, which is noise, and a larger "
+                "mostly add ways to drift: expect small validation differences, read against the predeclared 0.01 tolerance, and a larger "
                 "adapter. No experiment run is recorded on the release runtime; explain what you see from the validation curve "
                 "and the paired counts rather than from a single test mean.</details>"
             ),
@@ -795,34 +814,36 @@ TEMPLATE = {
         "warps are synthetic (a photograph and its own perspective-warped, re-lit copy — no viewpoint change of a real scene, no "
         "occlusion, no thermal modality, which is what the checkpoint was made for), the metrics are reference-based scores "
         "(own numpy implementations; none a human judgement), and the epoch history of the Colab T4 run of revision `552cb65` shows the estimate's "
-        "fragility: validation precision at 3 px moved 0.908 → 0.906 → 0.908 → 0.910 over epochs 0–3 and homography accuracy 0.958 → 0.979 → 0.979 → 0.979, differences of a few pairs in 48. So a gain here says the contract works, not that the adapted matcher is better on your "
+        "fragility: validation precision at 3 px moved 0.908 → 0.906 → 0.908 → 0.910 over epochs 0–3 and homography accuracy 0.958 → 0.979 → 0.979 → 0.979. So a gain here says the contract works, not that the adapted matcher is better on your "
         "images, that its confidences are calibrated, or that a match with a high confidence is right — it still returns "
         "matches for every pair, and it can be wrong confidently. Fine-tuning on a narrow set can also erode the model "
         "elsewhere; the drawn pair re-matched in Section 9 is one image of evidence about that, not a measurement.\n\n"
         "Three things to carry to real data. **Baselines first:** the identity guess, the patch neighbour and the frozen "
         "matcher's score on *your* pairs are the numbers to read before any adapted one, per tier and on the homography reading. "
-        "**Leakage:** keep every photograph in one split (the contract de-duplicates by decoded pixels) and split by scene, "
+        "**Leakage:** keep every photograph in one split (the contract removes exact decoded-pixel duplicates; resized or recompressed near-duplicates and related photographs are not detected) and split by scene, "
         "session or photographer when your images come from few sources — the sample's observer overlap is printed for exactly "
         "that reason. It is a disclosed limitation of this sample: photographs, not observers, are kept apart, and 53 of the 222 "
-        "observers contribute photographs to more than one split. For self-warp pairs it matters little; for real pairs of one "
-        "photographer's scenes it would. **References:** a synthetic warp gives an exact `H`; real pairs need depth, pose or a fitted homography "
-        "before they can be scored, and a fitted homography is itself an estimate.\n\n"
+        "observers contribute photographs to more than one split; camera, session and background can still correlate across "
+        "splits. **References:** a synthetic warp gives a reference `H` that is exact for the geometry over the valid overlap, "
+        "but the rendered image is sampled and filtered (bicubic), and the cropped border is not real occlusion; real pairs "
+        "can be scored by a homography only for roughly planar scenes or a purely rotating camera, otherwise they need depth "
+        "or pose, and a fitted homography is itself an estimate.\n\n"
         "Successful execution proves that the recorded repository revision's package, carried in this standalone notebook, can "
         "acquire and digest-verify the pinned model snapshot into its vendored network, fetch and digest-verify a real photograph "
-        "set and build exact-reference pairs from it, validate the demonstrated dataset contract without leakage, execute the "
+        "set and build exact-reference pairs from it, validate the demonstrated dataset contract without detected exact image overlap between splits, execute the "
         "inference contract and a bounded fine-tuning, evaluate against two trivial baselines and the frozen model on an "
         "image-disjoint split, and emit the shown machine-readable artifacts — without the repository being reachable. It does "
         "**not** establish benchmark superiority, matching accuracy on real viewpoint changes, other modalities or other cameras, "
         "calibration, or production fitness.\n\n"
-        "**Optional experiments (off by default; each names its field and what to run):** `RUN_RECIPE_GRID` in Section 7 runs the "
-        "pre-registered learning-rate grid on the validation split and selects the recipe by the stated rule. Section 10 trains four coarse "
+        "**Optional experiments (off by default; each names its field and what to run):** `RUN_RECIPE_GRID` in Section 7 is on by "
+        "default; untick it to train only the pre-selected configuration. Section 10 trains four coarse "
         "layers in its own pipeline and prints it beside the default run — change `EXPERIMENT_TRAINABLE_COARSE_LAYERS`, "
         "`EXPERIMENT_EPOCHS` or `EXPERIMENT_LEARNING_RATE` (for example `1e-5`) there and run that cell again. Changing "
         "`EPOCHS`, `LEARNING_RATE` or `TRAINABLE_COARSE_LAYERS` and choosing **Run after** from Section 7 also starts from the "
         "pinned base — every `adapt` puts it back first — but replaces the default results and exports. BYOD: `USE_BYOD` and "
         "`BYOD_PATH` in Section 4, then **Run after** from Section 4, and read the two baselines before the adapted number.\n\n"
         "## Troubleshooting\n\n"
-'- **Section 1 stops with "This notebook needs a Linux x86_64 runtime"** — you are on Windows, macOS or an ARM machine. Use Google Colab, Kaggle or a Linux x86_64 Jupyter server.\n- **The uv wheel fails its size/SHA-256 check, or a download in Section 1 times out** — run Section 1 again; a complete environment is reused, an incomplete one is finished. If it repeats, the network is blocking or altering `files.pythonhosted.org` or `pypi.org`.\n- **"The isolated environment\'s Python process exited"** — usually out of memory. Restart the session and choose **Run all**; leave the optional experiment off on a small runtime.\n- **You re-ran Section 1 on its own** — nothing is lost: it keeps the running worker and every variable, so the cells after it keep working. After a session restart, run from the top.\n- **Section 3 reports a size or SHA-256 mismatch, or cannot reach the Hub** — the message names the file. Delete it from the snapshot folder Section 3 prints and run Section 3 again; the snapshot comes from `huggingface.co`.\n- **Section 4 cannot fetch a photograph, or one fails its digest** — `fetch_corpus` names it; the default path needs `inaturalist-open-data.s3.amazonaws.com`. Run Section 4 again (cached photographs are re-hashed); delete `weights/inat-birds/` if a cached file is corrupt.\n- **The run takes much longer than expected** — dense matching at 640 px is heavy: about 41 minutes on CPU (package-API run at revision `b0bf4a3`) and about 26 minutes on a Colab T4 (revision `552cb65`). Choose a GPU runtime, and leave `RUN_RECIPE_GRID` and Section 10 off on a CPU.\n- **Out of memory** — restart the session and choose **Run all** on a larger runtime; leave Section 10 off.\n- **BYOD: the cell prints `byod_refused`** — the message names the file or setting and the rule; fix it and run Section 4 again. Later cells print `skipped` until an input is accepted, and the earlier run\'s files are in `outputs/_stale_before_byod/`.\n- **BYOD: "BYOD_PATH … does not exist"** — the path is relative to the working directory printed in the message.\n- **BYOD: "the upload dialog exists only in Google Colab"** — on Kaggle or Jupyter, put the zip in the runtime (or attach it as a dataset) and set `BYOD_PATH`.\n- **BYOD: "Upload exactly one .zip file"** — the dialog was cancelled or several files were chosen; run the cell again.\n- **BYOD: "BYOD file \'…\' is not a decodable JPEG / PNG image"** — that file is corrupt or not an image; remove it from the zip.\n- **BYOD: "the train split holds …"** — add photographs; the message names the minimum (6 to run, many more to read a number).\n- **BYOD: "… upscaled more than 2×"** — those photographs are small; their pairs are built from upscaled pixels, so expect weaker matches.\n'
+'- **Section 1 stops with "This notebook needs a Linux x86_64 runtime"** — you are on Windows, macOS or an ARM machine. Use Google Colab, Kaggle or a Linux x86_64 Jupyter server.\n- **The uv wheel fails its size/SHA-256 check, or a download in Section 1 times out** — run Section 1 again; a complete environment is reused, an incomplete one is finished. If it repeats, the network is blocking or altering `files.pythonhosted.org` or `pypi.org`.\n- **"The isolated environment\'s Python process exited"** — usually out of memory. Restart the session and choose **Run all**; leave the optional experiment off on a small runtime.\n- **You re-ran Section 1 on its own** — nothing is lost: it keeps the running worker and every variable, so the cells after it keep working. After a session restart, run from the top.\n- **Section 3 reports a size or SHA-256 mismatch, or cannot reach the Hub** — the message names the file. Delete it from the snapshot folder Section 3 prints and run Section 3 again; the snapshot comes from `huggingface.co`.\n- **Section 4 cannot fetch a photograph, or one fails its digest** — `fetch_corpus` names it; the default path needs `inaturalist-open-data.s3.amazonaws.com`. Run Section 4 again (cached photographs are re-hashed); delete `weights/inat-birds/` if a cached file is corrupt.\n- **The run takes much longer than expected** — dense matching at 640 px is heavy: about 41 minutes on CPU (package-API run at revision `b0bf4a3`) and about 26 minutes on a Colab T4 (revision `552cb65`). Choose a GPU runtime; on a CPU untick `RUN_RECIPE_GRID` (it triples the fine-tuning time) and leave Section 10 off.\n- **Out of memory** — restart the session and choose **Run all** on a larger runtime; leave Section 10 off.\n- **BYOD: the cell prints `byod_refused`** — the message names the file or setting and the rule; fix it and run Section 4 again. Later cells print `skipped` until an input is accepted, and the earlier run\'s files are in `outputs/_stale_before_byod/`.\n- **BYOD: "BYOD_PATH … does not exist"** — the path is relative to the working directory printed in the message.\n- **BYOD: "the upload dialog exists only in Google Colab"** — on Kaggle or Jupyter, put the zip in the runtime (or attach it as a dataset) and set `BYOD_PATH`.\n- **BYOD: "Upload exactly one .zip file"** — the dialog was cancelled or several files were chosen; run the cell again.\n- **BYOD: "BYOD file \'…\' is not a decodable JPEG / PNG image"** — that file is corrupt or not an image; remove it from the zip.\n- **BYOD: "the train split holds …"** — add photographs; the message names the minimum (6 to run, many more to read a number).\n- **BYOD: "… upscaled more than 2×"** — those photographs are small; their pairs are built from upscaled pixels, so expect weaker matches.\n'
         "## Glossary\n\n"
         "- **Homography** — a 3 × 3 projective map between two images of a plane; a warped copy has an exact one.\n"
         "- **Coarse-to-fine matching** — match cells at 1/8 resolution first, then refine each match at full resolution.\n"

@@ -195,3 +195,6 @@ def test_match_reports_keypoints_in_the_reference_frame():
     assert pl.KEYPOINT_FRAME_OFFSET == -0.5
     assert np.allclose(result["kpts0"], batch["mkpts0_f"].numpy() + pl.KEYPOINT_FRAME_OFFSET)
     assert np.allclose(result["kpts1"], batch["mkpts1_f"].numpy() + pl.KEYPOINT_FRAME_OFFSET)
+    # the raw network coordinates are returned beside the corrected ones, with the correction labelled
+    assert np.array_equal(result["kpts0_network"], batch["mkpts0_f"].numpy()) and np.array_equal(result["kpts1_network"], batch["mkpts1_f"].numpy())
+    assert result["keypoint_frame"]["offset_px"] == -0.5 and "empirical" in result["keypoint_frame"]["note"]

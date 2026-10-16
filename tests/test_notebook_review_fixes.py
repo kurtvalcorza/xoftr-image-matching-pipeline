@@ -281,7 +281,7 @@ def test_xof_m8_byod_moves_earlier_outputs_aside_and_later_cells_skip(notebook, 
     ns, _ = _refused(notebook, "nowhere.zip", capsys)
     assert not (tmp_path / "outputs" / f"{STEM}_evaluation_report.json").exists()
     assert (tmp_path / "outputs" / "_stale_before_byod" / f"{STEM}_evaluation_report.json").is_file()
-    for marker in ("baselines = pipe.evaluate_baselines(test_records)", "RUN_RECIPE_GRID = False", "adapted_test = pipe.evaluate(test_records)", "adapted_scene_match = pipe.match(", "RUN_EXPERIMENT = False"):
+    for marker in ("baselines = pipe.evaluate_baselines(test_records)", "RUN_RECIPE_GRID = True", "adapted_test = pipe.evaluate(test_records)", "adapted_scene_match = pipe.match(", "RUN_EXPERIMENT = False"):
         exec(_cell(notebook, marker), ns)
         assert "'skipped'" in capsys.readouterr().out, marker
 
@@ -336,3 +336,54 @@ def test_xof_m3_hosted_runtime_statement_names_the_t4_run(notebook):
     markdown = _markdown(notebook)
     assert "finishes in minutes" not in markdown and "a hosted T4 finishes the same path in minutes" not in markdown
     assert "about 26 minutes end to end (1,581 s)" in markdown and "revision `552cb65` (blob `9e0fd89d`" in markdown
+
+
+class _GridStandIn:
+    """adapt/save_artifact/load_artifact stand-ins: validation precision per learning rate is scripted."""
+
+    def __init__(self, scores):
+        self.scores, self.adapter, self.loaded = scores, None, None
+
+    def adapt(self, train, val, *, epochs, lr, batch_size, trainable_coarse_layers, selection_margin, progress=None):
+        v = self.scores[lr]
+        history = [{"epoch": 0, "train_loss": None, "val": {"precision_3px": 0.9, "homography_acc_3px": 0.9}},
+                   {"epoch": 1, "train_loss": 0.5, "val": {"precision_3px": v, "homography_acc_3px": 0.9}}]
+        best = 1 if v > 0.9 + selection_margin else 0
+        self.adapter = {"best_epoch": best, "history": history, "lr": lr}
+        return {"history": history, "best_epoch": best, "n_trainable": 1, "n_total": 2, "selection": "s", "started_from": "pinned base", "lr": lr, "epochs": epochs}
+
+    def save_artifact(self, directory, metadata=None):
+        directory = Path(directory)
+        directory.mkdir(parents=True)
+        (directory / "adapter.json").write_text(json.dumps(self.adapter), encoding="utf-8")
+        return directory
+
+    def load_artifact(self, directory):
+        self.adapter = json.loads((Path(directory) / "adapter.json").read_text(encoding="utf-8"))
+        self.loaded = Path(directory).name
+
+
+@pytest.mark.parametrize("scores, want", [({2e-5: 0.9, 5e-5: 0.905, 1e-4: 0.93}, 1e-4), ({2e-5: 0.9, 5e-5: 0.915, 1e-4: 0.92}, 5e-5)])
+def test_recipe_grid_selects_on_validation_and_restores_the_winner(notebook, tmp_path, monkeypatch, capsys, scores, want):
+    """Round 2 (#5, Kurt: grid ON by default): the grid runs by default, picks on validation with the 0.01 tolerance
+    over the pre-selected lr 5e-5, and restores the winner from its saved adapter instead of re-training it."""
+    monkeypatch.chdir(tmp_path)
+    source = _cell(notebook, "RUN_RECIPE_GRID = True")
+    pipe = _GridStandIn(scores)
+    ns = {"DATA_READY": True, "pipe": pipe, "train_records": [], "val_records": [], "SELECTION_MARGIN": 0.01,
+          "time": __import__("time"), "shutil": __import__("shutil"), "Path": Path}
+    exec(source, ns)
+    assert ns["recipe_selection"]["grid_run_this_session"] is True and len(ns["validation_table"]) == 3
+    assert ns["LEARNING_RATE"] == want and pipe.loaded == f"lr{want:g}_e3" and ns["adapt_result"]["lr"] == want
+    assert "test" not in json.dumps(ns["validation_table"])
+
+
+def test_recipe_grid_refuses_a_restored_adapter_that_differs(notebook, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    pipe = _GridStandIn({2e-5: 0.9, 5e-5: 0.905, 1e-4: 0.93})
+    real_load = pipe.load_artifact
+    pipe.load_artifact = lambda d: (real_load(d), pipe.adapter.update(best_epoch=7))
+    ns = {"DATA_READY": True, "pipe": pipe, "train_records": [], "val_records": [], "SELECTION_MARGIN": 0.01,
+          "time": __import__("time"), "shutil": __import__("shutil"), "Path": Path}
+    with pytest.raises(RuntimeError, match="does not match its selection run"):
+        exec(_cell(notebook, "RUN_RECIPE_GRID = True"), ns)

@@ -33,6 +33,18 @@ UNSAFE_WEIGHT_EXTENSIONS = (
 ALLOWED_CHECKPOINT_FILES = (MODEL_FILENAME,)
 
 # Inference contract.
+# Keypoint frame: an EMPIRICAL, checkpoint-specific correction, not a derived coordinate
+# identity. Fitted on CPU for the frozen pinned checkpoint on controlled synthetic warps of 6 real
+# photographs (scale, scale + rotation): fitted common offset (-0.41, -0.51) px, refit after the
+# shift (+0.09, -0.01) px. Verified for the frozen checkpoint only, not refitted for adapted
+# weights. A translation still shows a 0.11-0.14 px x-bias between image0 and image1 keypoints that
+# no common shift removes: an acknowledged localisation error, not corrected.
+KEYPOINT_FRAME_OFFSET = -0.5
+KEYPOINT_FRAME_NOTE = (
+    "empirical checkpoint-specific correction added to both keypoint sets (network output + "
+    "offset); fitted on controlled warps for the frozen checkpoint only; a residual 0.11-0.14 px "
+    "x-bias under translation remains"
+)
 COARSE_THRESHOLD = 0.3  # upstream MATCH_COARSE.THR
 FINE_THRESHOLD = 0.1  # upstream FINE.THR
 DIVISIBLE_BY = 8  # image sides are cropped down to a multiple of this (the 1/8 coarse grid)

@@ -11,6 +11,8 @@ from .config import (
     COARSE_THRESHOLD,
     DIVISIBLE_BY,
     FINE_THRESHOLD,
+    KEYPOINT_FRAME_NOTE,
+    KEYPOINT_FRAME_OFFSET,
     MAX_SIDE,
     MIN_SIDE,
     MODEL_FILENAME,
@@ -91,6 +93,7 @@ def build_provenance(
             "coarse_threshold": COARSE_THRESHOLD,
             "fine_threshold": FINE_THRESHOLD,
             "match_confidence_semantics": "dual_softmax_and_fine_scores_not_calibrated_probability",
+            "keypoint_frame": {"offset_px": KEYPOINT_FRAME_OFFSET, "note": KEYPOINT_FRAME_NOTE},
             "geometric_verification": (
                 "none in the pipeline; the evaluation's RANSAC-DLT is a metric, not a filter"
             ),

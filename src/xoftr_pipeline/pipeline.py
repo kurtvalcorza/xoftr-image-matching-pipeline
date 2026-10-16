@@ -22,6 +22,8 @@ from .config import (
     DEFAULT_MODEL_KEY,
     DIVISIBLE_BY,
     FINE_THRESHOLD,
+    KEYPOINT_FRAME_NOTE,
+    KEYPOINT_FRAME_OFFSET,
     MAX_SIDE,
     MIN_SIDE,
     MODEL_FILENAME,
@@ -45,11 +47,8 @@ MAX_EVAL_RECORDS = 5_000
 # An epoch replaces the frozen model only if validation precision at 3 px gains more than this (XOF-m10): the
 # same 0.01 tolerance the tutorial's verdicts call `flat`.
 SELECTION_MARGIN = 0.01
-# The vendored network's fine-level keypoints stand for image content half a pixel up-left of H's pixel-index frame
-# (measured on the pinned checkpoint, CPU, 6 real photographs x scale/rotation warps rendered with the fixed
-# C·H·C⁻¹ warp: fitted offset (-0.41, -0.51) px; after this shift the residual fit is (+0.09, -0.01) px). match() is
-# the one place keypoints are converted into the frame the reference H, the metrics and the baselines use.
-KEYPOINT_FRAME_OFFSET = -0.5
+# KEYPOINT_FRAME_OFFSET (config.py) is an empirical, checkpoint-specific frame correction; match() is the one place
+# it is applied, and the raw network coordinates are returned beside the corrected ones.
 MIN_SCORED_RECORDS = 30  # below this a scored set is labelled a small sample
 ARTIFACT_FORMAT = "org.valcorza.xoftr.adapter.v1"
 ARTIFACT_FORMAT_VERSION = "1.0"
@@ -223,9 +222,12 @@ class XoFTRPipeline:
         batch = {"image0": t0, "image1": t1}
         with torch.inference_mode():
             self.model(batch)
-        # Network keypoints -> H's pixel-index frame (KEYPOINT_FRAME_OFFSET), for both images alike.
-        kpts0 = (batch["mkpts0_f"].detach().cpu().numpy() + KEYPOINT_FRAME_OFFSET).astype(np.float32)
-        kpts1 = (batch["mkpts1_f"].detach().cpu().numpy() + KEYPOINT_FRAME_OFFSET).astype(np.float32)
+        # Network keypoints -> H's pixel-index frame by the empirical KEYPOINT_FRAME_OFFSET, for both images alike;
+        # the raw network coordinates are kept beside them.
+        raw0 = batch["mkpts0_f"].detach().cpu().numpy().astype(np.float32).reshape(-1, 2)
+        raw1 = batch["mkpts1_f"].detach().cpu().numpy().astype(np.float32).reshape(-1, 2)
+        kpts0 = (raw0 + np.float32(KEYPOINT_FRAME_OFFSET)).astype(np.float32)
+        kpts1 = (raw1 + np.float32(KEYPOINT_FRAME_OFFSET)).astype(np.float32)
         conf = batch["mconf_f"].detach().cpu().numpy().astype(np.float32)
         return {
             "kpts0": kpts0.reshape(-1, 2),
@@ -234,6 +236,9 @@ class XoFTRPipeline:
             "size0": [int(t0.shape[-1]), int(t0.shape[-2])],
             "size1": [int(t1.shape[-1]), int(t1.shape[-2])],
             "coarse_matches": int(batch["mkpts0_c"].shape[0]),
+            "kpts0_network": raw0,
+            "kpts1_network": raw1,
+            "keypoint_frame": {"offset_px": KEYPOINT_FRAME_OFFSET, "note": KEYPOINT_FRAME_NOTE},
         }
 
     # ------------------------------------------------------------------ evaluation
