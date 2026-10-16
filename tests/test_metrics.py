@@ -88,3 +88,30 @@ def test_baselines_on_a_pure_translation():
     row = pair_metrics(neighbour, shift, image0.size)
     assert row["precision_3px"] > 0.7 and row["corner_error_px"] < 3.0
     assert "patch nearest neighbour" in neighbour["baseline"]
+
+
+def test_dlt_requires_numerical_rank_eight_for_every_shape():
+    """XOF round 2 (#7): with four correspondences the system is 8 x 9 and svd returns 8 singular values, so the old
+    sigma[-2] test let rank-7 minimal samples through. Shared spec with lightglue-matching-pipeline: at least 8
+    singular values above 1e-10 * s[0]."""
+    from xoftr_pipeline.metrics import dlt_homography
+
+    H = np.array([[1.1, 0.05, 3.0], [-0.02, 0.95, -2.0], [1e-4, 2e-4, 1.0]])
+
+    def project(pts):
+        p = np.c_[pts, np.ones(len(pts))] @ H.T
+        return p[:, :2] / p[:, 2:]
+
+    square = np.array([[10.0, 10.0], [200.0, 15.0], [190.0, 150.0], [20.0, 140.0]])
+    assert np.allclose(dlt_homography(square, project(square)), H / H[2, 2], atol=1e-6)  # valid minimal sample
+    collinear = np.array([[0.0, 0.0], [10.0, 10.0], [20.0, 20.0], [5.0, 40.0]])  # three of four on a line
+    assert dlt_homography(collinear, project(collinear)) is None
+    repeated = np.array([[0.0, 0.0], [0.0, 0.0], [30.0, 5.0], [5.0, 40.0]])
+    assert dlt_homography(repeated, project(repeated)) is None
+    near = collinear + np.array([[0.0, 0.0], [0.0, 0.0], [0.0, 1e-13], [0.0, 0.0]])  # numerically collinear
+    assert dlt_homography(near, project(near)) is None
+    many = np.random.default_rng(0).uniform(0, 300, (500, 2))  # overdetermined
+    assert np.allclose(dlt_homography(many, project(many)), H / H[2, 2], atol=1e-6)
+    assert dlt_homography(square, np.array([[1.0, 1.0], [np.nan, 2.0], [3.0, 3.0], [4.0, 9.0]])) is None
+    with pytest.raises(ValueError):  # mismatched lengths are a caller error (zip strict=True)
+        dlt_homography(square, project(square)[:3])

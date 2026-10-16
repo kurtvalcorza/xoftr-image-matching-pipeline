@@ -169,3 +169,62 @@ def test_split_dataset_dedups_and_byod_round_trip(tmp_path):
     out = write_dataset_csv(splits["train"], tmp_path / "train.csv")
     text = out.read_text(encoding="utf-8")
     assert text.startswith("id,source_id,tier,seed,homography") and json.loads(text.splitlines()[1].split(",", 4)[4].split('",')[0].strip('"').replace('""', '"')) is not None
+
+
+def _about_centre(m, w, h):
+    c = np.array([[1.0, 0.0, (w - 1) / 2], [0.0, 1.0, (h - 1) / 2], [0.0, 0.0, 1.0]])
+    return c @ np.asarray(m, dtype=float) @ np.linalg.inv(c)
+
+
+@pytest.mark.parametrize("name", ["identity", "translation", "scale", "rotation_180", "perspective", "hard_tier_draws"])
+def test_rendered_warp_is_the_scored_reference_homography(name):
+    """XOF-M4: coordinate-ramp fiducials (as lightglue-matching-pipeline a51be97). Each ramp pixel stores its own
+    integer-centred x (or y); after warping with warp_image's coefficients, pixel q must hold H^-1(q). Bilinear
+    reproduces a ramp exactly, so it must agree to < 0.05 px everywhere; warp_image's bicubic must be unbiased
+    (mean displacement < 0.05 px). Before the C·H·C⁻¹ fix, hard-tier draws were off by up to ~0.5 px."""
+    import math
+    import random
+
+    from PIL import Image
+
+    w, h = 160, 120
+    c, s = math.cos(math.pi), math.sin(math.pi)
+    if name == "hard_tier_draws":
+        hs = [sm.sample_homography((w, h), random.Random(1000 + i), TIER_PARAMS["hard"]) for i in range(5)]
+    else:
+        hs = [
+            {
+                "identity": np.eye(3),
+                "translation": np.array([[1, 0, 7.0], [0, 1, -4.0], [0, 0, 1.0]]),
+                "scale": _about_centre(np.diag([1.3, 1.3, 1.0]), w, h),
+                "rotation_180": _about_centre([[c, -s, 0], [s, c, 0], [0, 0, 1.0]], w, h),
+                "perspective": _about_centre([[1.05, 0.04, 0], [-0.03, 0.97, 0], [2e-4, -1.5e-4, 1.0]], w, h),
+            }[name]
+        ]
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    for H in hs:
+        p = np.linalg.inv(H) @ np.stack([xx.ravel(), yy.ravel(), np.ones(xx.size)])
+        p = p[:2] / p[2]
+        inside = (p[0] > 3) & (p[0] < w - 4) & (p[1] > 3) & (p[1] < h - 4)
+        assert inside.sum() > 100
+        coeffs = sm._perspective_coefficients(H)
+        for interp, bound in ((Image.BILINEAR, "max"), (Image.BICUBIC, "mean")):
+            warped = [np.asarray(Image.fromarray(ramp).transform((w, h), Image.PERSPECTIVE, coeffs, interp), dtype=np.float64).ravel()[inside] for ramp in (xx, yy)]
+            dx, dy = warped[0] - p[0][inside], warped[1] - p[1][inside]
+            err = float(np.hypot(dx, dy).max()) if bound == "max" else float(np.hypot(dx.mean(), dy.mean()))
+            assert err < 0.05, (name, interp, err)
+        # warp_image itself is the bicubic path checked above (single-channel float images pass through unchanged)
+        direct = np.asarray(sm.warp_image(Image.fromarray(xx), H), dtype=np.float64).ravel()[inside]
+        assert abs(float((direct - p[0][inside]).mean())) < 0.05
+
+
+def test_pillow_homography_is_the_half_pixel_conjugate():
+    H = np.array([[1.1, 0.05, 3.0], [-0.02, 0.95, -2.0], [1e-4, 2e-4, 1.0]])
+    shifted = sm.pillow_homography(H)
+    # a point at integer-centred q maps to H(q); in Pillow's frame that point is q + 0.5 and lands at H(q) + 0.5
+    q = np.array([37.0, 81.0, 1.0])
+    want = H @ q
+    want = want[:2] / want[2] + 0.5
+    got = shifted @ np.array([37.5, 81.5, 1.0])
+    assert np.allclose(got[:2] / got[2], want, atol=1e-9)
+    assert np.allclose(sm.pillow_homography(np.eye(3)), np.eye(3))

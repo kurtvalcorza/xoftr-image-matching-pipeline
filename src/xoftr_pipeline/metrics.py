@@ -88,10 +88,13 @@ def dlt_homography(kpts0: np.ndarray, kpts1: np.ndarray) -> np.ndarray | None:
         rows.append([0.0, 0.0, 0.0, -x, -y, -1.0, v * x, v * y, v])
     a = np.asarray(rows)
     try:
-        _u, sigma, vt = np.linalg.svd(a)
+        s = np.linalg.svd(a, compute_uv=False)
+        _u, _s, vt = np.linalg.svd(a)
     except np.linalg.LinAlgError:
         return None
-    if sigma[-2] < 1e-12:  # rank-deficient: collinear points
+    # A homography needs numerical rank 8 whatever the matrix shape: with four correspondences `a` is 8 x 9 and has only
+    # eight singular values, so testing the second-smallest one admitted rank-7 (degenerate) minimal samples.
+    if not np.isfinite(s).all() or s[0] <= 0.0 or int(np.count_nonzero(s > 1e-10 * s[0])) < 8:
         return None
     h_norm = vt[-1].reshape(3, 3)
     homography = np.linalg.inv(t1) @ h_norm @ t0

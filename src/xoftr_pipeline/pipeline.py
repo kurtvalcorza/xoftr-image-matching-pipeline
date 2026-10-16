@@ -22,6 +22,8 @@ from .config import (
     DEFAULT_MODEL_KEY,
     DIVISIBLE_BY,
     FINE_THRESHOLD,
+    KEYPOINT_FRAME_NOTE,
+    KEYPOINT_FRAME_OFFSET,
     MAX_SIDE,
     MIN_SIDE,
     MODEL_FILENAME,
@@ -42,6 +44,11 @@ ImageInput = str | Path | bytes | Image.Image
 COARSE_LAYERS = 8  # loftr_coarse: ['self', 'cross'] * 4
 DEFAULT_TRAINABLE_COARSE_LAYERS = 2  # the last self + cross pair + the coarse projection (1,378,560 params)
 MAX_EVAL_RECORDS = 5_000
+# An epoch replaces the frozen model only if validation precision at 3 px gains more than this (XOF-m10): the
+# same 0.01 tolerance the tutorial's verdicts call `flat`.
+SELECTION_MARGIN = 0.01
+# KEYPOINT_FRAME_OFFSET (config.py) is an empirical, checkpoint-specific frame correction; match() is the one place
+# it is applied, and the raw network coordinates are returned beside the corrected ones.
 MIN_SCORED_RECORDS = 30  # below this a scored set is labelled a small sample
 ARTIFACT_FORMAT = "org.valcorza.xoftr.adapter.v1"
 ARTIFACT_FORMAT_VERSION = "1.0"
@@ -215,8 +222,12 @@ class XoFTRPipeline:
         batch = {"image0": t0, "image1": t1}
         with torch.inference_mode():
             self.model(batch)
-        kpts0 = batch["mkpts0_f"].detach().cpu().numpy().astype(np.float32)
-        kpts1 = batch["mkpts1_f"].detach().cpu().numpy().astype(np.float32)
+        # Network keypoints -> H's pixel-index frame by the empirical KEYPOINT_FRAME_OFFSET, for both images alike;
+        # the raw network coordinates are kept beside them.
+        raw0 = batch["mkpts0_f"].detach().cpu().numpy().astype(np.float32).reshape(-1, 2)
+        raw1 = batch["mkpts1_f"].detach().cpu().numpy().astype(np.float32).reshape(-1, 2)
+        kpts0 = (raw0 + np.float32(KEYPOINT_FRAME_OFFSET)).astype(np.float32)
+        kpts1 = (raw1 + np.float32(KEYPOINT_FRAME_OFFSET)).astype(np.float32)
         conf = batch["mconf_f"].detach().cpu().numpy().astype(np.float32)
         return {
             "kpts0": kpts0.reshape(-1, 2),
@@ -225,6 +236,9 @@ class XoFTRPipeline:
             "size0": [int(t0.shape[-1]), int(t0.shape[-2])],
             "size1": [int(t1.shape[-1]), int(t1.shape[-2])],
             "coarse_matches": int(batch["mkpts0_c"].shape[0]),
+            "kpts0_network": raw0,
+            "kpts1_network": raw1,
+            "keypoint_frame": {"offset_px": KEYPOINT_FRAME_OFFSET, "note": KEYPOINT_FRAME_NOTE},
         }
 
     # ------------------------------------------------------------------ evaluation
@@ -391,6 +405,7 @@ class XoFTRPipeline:
         batch_size: int = 4,
         trainable_coarse_layers: int = DEFAULT_TRAINABLE_COARSE_LAYERS,
         seed: int = 0,
+        selection_margin: float = SELECTION_MARGIN,
         progress: Callable[[dict[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         """Bounded fine-tuning of the coarse matcher on validated pairs.
@@ -401,12 +416,20 @@ class XoFTRPipeline:
         pair runs the upstream forward to the coarse similarity matrix and is scored with the upstream coarse
         focal loss against the homography's coarse ground truth; `batch_size` pairs are accumulated per AdamW
         step (pairs have different sizes, so they are not stacked), gradients are clipped at 1.0, the order is
-        seeded, no scheduler. Epoch 0 records the frozen model's validation metrics; the epoch with the highest
-        validation precision at 3 px is kept (ties broken by homography accuracy at 3 px). Every call starts
+        seeded, no scheduler. Epoch 0 records the frozen model's validation metrics; a later epoch is eligible only
+        if its validation precision at 3 px beats the frozen epoch 0 by more than `selection_margin` (default
+        0.01, the same tolerance the notebook's verdicts call `flat`), and among eligible epochs the highest
+        validation precision at 3 px is kept (ties broken by homography accuracy at 3 px); if none is eligible,
+        epoch 0 (the frozen model) is kept. Every call starts
         from the pinned base: tensors an earlier adapt() or load_artifact() changed are restored first, so epoch
         0 is always the frozen model. Transactional: any failure puts back the weights this call found."""
         from .samples import validate_dataset
 
+        if isinstance(selection_margin, bool) or not isinstance(selection_margin, (int, float)) or not (
+            0.0 <= float(selection_margin) <= 0.5
+        ):
+            raise ValueError("selection_margin must be a number in 0..0.5")
+        selection_margin = float(selection_margin)
         if isinstance(epochs, bool) or not isinstance(epochs, int) or not 1 <= epochs <= 20:
             raise ValueError("epochs must be an int in 1..20")
         if not (0.0 < lr <= 1e-3):
@@ -449,6 +472,7 @@ class XoFTRPipeline:
         if progress:
             progress(entry)
         best_key = key(entry)
+        frozen_precision = entry["val"]["precision_3px"] if entry["val"] else None
         best_state = {k: v.detach().clone() for k, v in model.state_dict().items() if k in wanted}
         initial_state = {k: v.clone() for k, v in best_state.items()}
         best_epoch = 0
@@ -478,7 +502,10 @@ class XoFTRPipeline:
                 history.append(entry)
                 if progress:
                     progress(entry)
-                if not entry["val"] or key(entry) > best_key:
+                # Without validation the final epoch is kept. With it, an epoch must clear the frozen epoch 0 by
+                # more than selection_margin (XOF-m10) and then beat the best eligible epoch so far.
+                eligible = not entry["val"] or entry["val"]["precision_3px"] > frozen_precision + selection_margin
+                if eligible and (not entry["val"] or key(entry) > best_key):
                     best_key = key(entry)
                     best_state = {k: v.detach().clone() for k, v in model.state_dict().items() if k in wanted}
                     best_epoch = epoch
@@ -505,11 +532,15 @@ class XoFTRPipeline:
             "n_total": sum(p.numel() for p in model.parameters()),
             "epochs": epochs,
             "best_epoch": best_epoch,
-            "selection": "highest validation precision at 3 px (ties: homography accuracy at 3 px)"
+            "selection": (
+                f"highest validation precision at 3 px among epochs that beat the frozen epoch 0 by more than "
+                f"{selection_margin:g} (ties: homography accuracy at 3 px); epoch 0 otherwise"
+            )
             if val_checked
             else "final epoch (no validation split)",
             "lr": lr,
             "batch_size": batch_size,
+            "selection_margin": selection_margin,
             "n_train": len(train_checked),
             "n_val": len(val_checked),
             "seed": seed,
@@ -658,9 +689,11 @@ __all__ = [
     "COARSE_LAYERS",
     "DEFAULT_TRAINABLE_COARSE_LAYERS",
     "INPUT_SCHEMA",
+    "KEYPOINT_FRAME_OFFSET",
     "MAX_EVAL_RECORDS",
     "MIN_SCORED_RECORDS",
     "PARAMETER_COUNT",
+    "SELECTION_MARGIN",
     "XoFTRPipeline",
     "evaluation_report",
     "load_pipeline",
