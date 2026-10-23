@@ -35,9 +35,10 @@ jobs:
   integration:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
-    # The live tutorial runs its default path on CPU (about 41 minutes on the build workstation, longer on a
-    # 2-vCPU hosted runner); at 60 minutes the job was cancelled mid-notebook.
-    timeout-minutes: 180
+    # A push to main runs the smoke test only (60 minutes, as before). The live tutorial runs on manual dispatch
+    # only: its CPU default path takes about 41 minutes on the build workstation and longer on a 2-vCPU hosted
+    # runner, so a dispatched run gets 180 minutes.
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 180 || 60 }}
     env:
       RUN_INTEGRATION: '1'
       HF_HOME: ${{ github.workspace }}/.hf-cache
@@ -64,10 +65,12 @@ jobs:
       # reference environment above stays the runtime; the notebook stages the weights itself into
       # weights/xoftr/ (the committed small files are already there).
       - name: Execute live tutorial top-to-bottom
+        if: github.event_name == 'workflow_dispatch'
         env:
           DIMER_NOTEBOOK_CI_PREINSTALLED: '1'
         run: python tools/run_notebook.py tutorials/xoftr_image_matching_colab.ipynb
       - name: Upload tutorial outputs
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: xoftr-live-tutorial-outputs

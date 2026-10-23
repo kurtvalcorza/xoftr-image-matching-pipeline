@@ -67,7 +67,7 @@ pipe.save_artifact("outputs/adapter")
 - `xoftr_image_matching_result.json`
 - `provenance.json`
 
-The default path runs on CPU and uses CUDA automatically when present (about 41 minutes on the build workstation's CPU after the downloads — dense matching at 640 px costs about 2.5 s per pair without a GPU — longer on a 2-vCPU hosted runtime; a hosted T4 finishes in minutes). The metrics it prints are one seeded split of one 360-pair sample under synthetic warps — evidence that the adaptation contract works, not a matching benchmark or production-fitness evidence. The `main` integration workflow executes the notebook's code cells on the frozen CPU reference environment as a pre-flight; see `tutorials/README.md` for the registry and `docs/release-verification.md` for the release gate.
+The default path runs on CPU and uses CUDA automatically when present (about 41 minutes on the build workstation's CPU after the downloads — dense matching at 640 px costs about 2.5 s per pair without a GPU — longer on a 2-vCPU hosted runtime; a hosted T4 finishes in minutes). The metrics it prints are one seeded split of one 360-pair sample under synthetic warps — evidence that the adaptation contract works, not a matching benchmark or production-fitness evidence. A manually dispatched (`workflow_dispatch`) run of the integration workflow executes the notebook's code cells on the frozen CPU reference environment as a pre-flight; see `tutorials/README.md` for the registry and `docs/release-verification.md` for the release gate.
 
 ## Release status
 
