@@ -35,7 +35,9 @@ jobs:
   integration:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # The live tutorial runs its default path on CPU (about 41 minutes on the build workstation, longer on a
+    # 2-vCPU hosted runner); at 60 minutes the job was cancelled mid-notebook.
+    timeout-minutes: 180
     env:
       RUN_INTEGRATION: '1'
       HF_HOME: ${{ github.workspace }}/.hf-cache
