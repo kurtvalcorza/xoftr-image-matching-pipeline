@@ -53,7 +53,7 @@ CODE_MARKERS = (
     "return {name: validate_dataset(part, min_records=MIN_RECORDS if name == 'train' else 1) for name, part in parts.items()}",
     # A refused BYOD input is one message, no traceback, no stale outputs; later cells print `skipped` (XOF-m8, DAT20)
     "except (ValueError, zipfile.BadZipFile) as exc:",
-    "print({'byod_refused': byod_refusal,",
+    "raise BYODRefusal(byod_name, ",
     "stale_dir = Path('outputs/_stale_before_byod')",
     "if not DATA_READY:",
     "restored_tensors = pipe.restore_base()",

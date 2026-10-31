@@ -248,19 +248,22 @@ def test_xof_m1_byod_path_runs_section_4_outside_colab_from_the_base(notebook, t
 
 def _refused(notebook, byod_path, capsys) -> tuple[dict, str]:
     ns = _section_4_namespace([])
-    exec(_section_4(notebook, byod_path), ns)  # a refusal must not raise (DAT20)
+    with pytest.raises(ValueError) as caught:  # DAT20 (2026-10-26): the refusal raises, so Run all stops here
+        exec(_section_4(notebook, byod_path), ns)
     out = capsys.readouterr().out
+    rendered = caught.value._render_traceback_()
+    assert caught.value.dimer_refusal is True and len(rendered) == 1 and rendered[0].startswith("Refused: ")
     assert ns["DATA_READY"] is False and "train_records" not in ns and "splits" not in ns
-    assert out.count("'byod_refused'") == 1 and "run this cell again" in out and "Traceback" not in out
-    return ns, out
+    assert "run this cell again" in rendered[0] and "Traceback" not in out + rendered[0]
+    return ns, rendered[0]
 
 
 def test_xof_m1_upload_outside_colab_cancelled_and_bad_path_are_explained(notebook, tmp_path, monkeypatch, capsys):
-    """XOF-m8 (DAT20): every BYOD refusal is one printed message with the fix, no exception, no data left behind."""
+    """XOF-m8 (DAT20): every BYOD refusal is one `Refused:` line with the fix; it stops the run, no data left behind."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setitem(sys.modules, "google", None)
     assert "upload dialog exists only in Google Colab" in _refused(notebook, "", capsys)[1]
-    assert "BYOD_PATH 'nowhere.zip' does not exist" in _refused(notebook, "nowhere.zip", capsys)[1]
+    assert _refused(notebook, "nowhere.zip", capsys)[1].startswith("Refused: nowhere.zip: BYOD_PATH does not exist")
     (tmp_path / "broken.zip").write_bytes(b"not a zip")
     _refused(notebook, "broken.zip", capsys)
     _zip(tmp_path / "few.zip", 3, size=(200, 150))

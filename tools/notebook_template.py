@@ -58,27 +58,42 @@ for stale_name in ('splits', 'dataset_manifests', 'train_records', 'val_records'
     globals().pop(stale_name, None)
 
 
-class ByodRefused(ValueError):
-    """A BYOD input the contract refuses: shown as one message, not a traceback (DAT20)."""
+class BYODRefusal(ValueError):
+    """A refused BYOD input: ``BYODRefusal(file_name, reason_and_fix)``."""
+
+    dimer_refusal = True
+
+    def __init__(self, file_name, reason):
+        super().__init__(f"{{file_name}}: {{reason}}")
+        self.file_name = file_name
+        self.reason = reason
+
+    def _render_traceback_(self):
+        return [f"Refused: {{self}}"]
+
+
+byod_name = BYOD_PATH.strip() or '(no file)'  # DAT19: the file every refusal names
 
 
 def byod_inputs():
+    global byod_name
     if BYOD_PATH.strip():
         byod_zip = Path(BYOD_PATH.strip()).expanduser()
         if not byod_zip.exists():
-            raise ByodRefused(f'BYOD_PATH {{BYOD_PATH!r}} does not exist (relative paths start at {{Path.cwd()}}): give a .zip or a folder holding JPEG / PNG photographs.')
-        file_name = byod_zip.name
+            raise BYODRefusal(byod_name, f'BYOD_PATH does not exist (relative paths start at {{Path.cwd()}}): give a .zip or a folder holding JPEG / PNG photographs, then run this cell again.')
+        file_name = byod_name = byod_zip.name
     else:
         try:
             from google.colab import files
         except ImportError:
-            raise ByodRefused('USE_BYOD is True but BYOD_PATH is empty, and the upload dialog exists only in Google Colab: on Kaggle or Jupyter put the zip (or folder) in the runtime and set BYOD_PATH to its path.') from None
+            raise BYODRefusal(byod_name, 'USE_BYOD is True but BYOD_PATH is empty, and the upload dialog exists only in Google Colab: on Kaggle or Jupyter put the zip (or folder) in the runtime, set BYOD_PATH to its path and run this cell again.') from None
         uploaded = files.upload() or {{}}
         if len(uploaded) != 1:
-            raise ByodRefused(f'Upload exactly one .zip file (received {{len(uploaded)}}; a cancelled dialog sends none).')
+            raise BYODRefusal(', '.join(uploaded) or '(no file)', f'upload exactly one .zip file (received {{len(uploaded)}}; a cancelled dialog sends none), then run this cell again.')
         file_name, payload = next(iter(uploaded.items()))
+        byod_name = file_name
         if not file_name.lower().endswith('.zip'):
-            raise ByodRefused(f'{{file_name}}: upload one .zip holding JPEG / PNG photographs.')
+            raise BYODRefusal(file_name, 'upload one .zip holding JPEG / PNG photographs, then run this cell again.')
         byod_zip = Path('work') / 'byod.zip'
         byod_zip.parent.mkdir(parents=True, exist_ok=True)
         byod_zip.write_bytes(payload)
@@ -97,7 +112,6 @@ def validated(parts):
     return {{name: validate_dataset(part, min_records=MIN_RECORDS if name == 'train' else 1) for name, part in parts.items()}}
 
 
-byod_refusal = None
 if USE_BYOD:
     # Files from an earlier run are moved aside first, so none of them can be read as the BYOD result.
     stale_dir = Path('outputs/_stale_before_byod')
@@ -111,8 +125,10 @@ if USE_BYOD:
     try:
         splits, data_source, raw_rows = byod_inputs()
         dataset_manifests = validated(splits)
+    except BYODRefusal:
+        raise
     except (ValueError, zipfile.BadZipFile) as exc:  # refusals of the input; integrity errors still stop with an error
-        byod_refusal = str(exc)
+        raise BYODRefusal(byod_name, f'{{str(exc).rstrip(".")}}; fix the named file or setting and run this cell again (or set USE_BYOD = False).') from None
 else:
     corpus_files = fetch_corpus(cache_dir='weights/inat-birds')
     corpus = read_corpus(corpus_files)
@@ -120,33 +136,31 @@ else:
     data_source = f'{{CORPUS_NAME}}: {{CORPUS_RELEASE}} ({{CORPUS_LICENSE}}); one seeded homography pair per photograph'
     raw_rows = {{'photographs': len(corpus), 'bytes': sum(len(v) for v in corpus_files.values()), 'observers': len({{r['observer'] for r in corpus}})}}
     dataset_manifests = validated(splits)
-if byod_refusal is not None:
-    print({{'byod_refused': byod_refusal, 'what_to_do': 'fix the named file or setting and run this cell again (or set USE_BYOD = False); the cells below print skipped until an input is accepted'}})
-else:
-    splits = {{name: manifest['records'] for name, manifest in dataset_manifests.items()}}
-    disjoint = check_split_disjoint(splits)
-    train_records, val_records, test_records = splits['train'], splits['validation'], splits['test']
-    write_dataset_csv(train_records, 'outputs/{stem}_train.csv')
-    DATA_READY = True
-    print({{'data_source': data_source, 'raw_rows': raw_rows, 'splits': disjoint, 'observer_overlap': observer_overlap(splits), 'tiers': {{k: v for k, v in TIER_PARAMS.items()}}}})
-    for name, manifest in dataset_manifests.items():
-        print({{name: {{'n': manifest['n_records'], 'tiers': manifest['tiers'], 'image_side': manifest['image_side'], 'digest': manifest['digest'][:16] + '...'}}}})
-    example = train_records[0]
-    corners = np.array([[0.0, 0.0], [example['image0'].width - 1.0, 0.0], [example['image0'].width - 1.0, example['image0'].height - 1.0], [0.0, example['image0'].height - 1.0]])
-    print({{'example': {{'id': example['id'], 'tier': example['tier'], 'size': list(example['image0'].size), 'corners_under_H': np.round(warp_points(corners, np.asarray(example['homography'])), 1).tolist(), 'observation': example.get('inat_observation_url')}}}})
+# A refused input raised above, so Run all stopped there; only an accepted dataset reaches this point.
+splits = {{name: manifest['records'] for name, manifest in dataset_manifests.items()}}
+disjoint = check_split_disjoint(splits)
+train_records, val_records, test_records = splits['train'], splits['validation'], splits['test']
+write_dataset_csv(train_records, 'outputs/{stem}_train.csv')
+DATA_READY = True
+print({{'data_source': data_source, 'raw_rows': raw_rows, 'splits': disjoint, 'observer_overlap': observer_overlap(splits), 'tiers': {{k: v for k, v in TIER_PARAMS.items()}}}})
+for name, manifest in dataset_manifests.items():
+    print({{name: {{'n': manifest['n_records'], 'tiers': manifest['tiers'], 'image_side': manifest['image_side'], 'digest': manifest['digest'][:16] + '...'}}}})
+example = train_records[0]
+corners = np.array([[0.0, 0.0], [example['image0'].width - 1.0, 0.0], [example['image0'].width - 1.0, example['image0'].height - 1.0], [0.0, example['image0'].height - 1.0]])
+print({{'example': {{'id': example['id'], 'tier': example['tier'], 'size': list(example['image0'].size), 'corners_under_H': np.round(warp_points(corners, np.asarray(example['homography'])), 1).tolist(), 'observation': example.get('inat_observation_url')}}}})
 
-    probes = {{
-        'duplicate id': [{{**r, 'id': 'same'}} for r in train_records[:8]],
-        'image over the side ceiling': [{{**train_records[0], 'image0': Image.new('RGB', (MAX_IMAGE_SIDE + 1, 8))}}, *train_records[1:8]],
-        'singular homography': [{{**train_records[0], 'homography': [[1, 0, 0], [1, 0, 0], [0, 0, 1]]}}, *train_records[1:8]],
-        'too small': train_records[:3],
-    }}
-    for name, probe in probes.items():
-        try:
-            validate_dataset(probe)
-            print({{'probe': name, 'verdict': 'accepted'}})
-        except (TypeError, ValueError) as exc:
-            print({{'probe': name, 'rejected': str(exc)[:110]}})'''
+probes = {{
+    'duplicate id': [{{**r, 'id': 'same'}} for r in train_records[:8]],
+    'image over the side ceiling': [{{**train_records[0], 'image0': Image.new('RGB', (MAX_IMAGE_SIDE + 1, 8))}}, *train_records[1:8]],
+    'singular homography': [{{**train_records[0], 'homography': [[1, 0, 0], [1, 0, 0], [0, 0, 1]]}}, *train_records[1:8]],
+    'too small': train_records[:3],
+}}
+for name, probe in probes.items():
+    try:
+        validate_dataset(probe)
+        print({{'probe': name, 'verdict': 'accepted'}})
+    except (TypeError, ValueError) as exc:
+        print({{'probe': name, 'rejected': str(exc)[:110]}})'''
 
 
 SECTION7_CODE = '''EPOCHS = 3  # @param {{type:"integer"}}
@@ -415,8 +429,8 @@ TEMPLATE = {
                 "`BYOD_PATH` empty to upload exactly one zip through the Colab dialog; then choose **Run after** from this cell. "
                 "This cell first puts the model back to the pinned base, so Section 6 and Section 7's epoch 0 read the frozen "
                 "matcher. The effective minimum is 6 photographs. If a BYOD input is refused — a missing path, a cancelled upload, "
-                "a file that is not a decodable photograph, too few photographs — the cell prints one `byod_refused` message "
-                "naming the problem and how to fix it, with no traceback; files from the earlier run are first moved to "
+                "a file that is not a decodable photograph, too few photographs — the cell shows one `Refused: <file>: <reason>` line "
+                "naming the problem and how to fix it, with no traceback, and Run all stops there; files from the earlier run are first moved to "
                 "`outputs/_stale_before_byod/` so none can be read as the BYOD result, and the later cells print `skipped` "
                 "until an input is accepted.\n\n"
                 "**Predict before running:** each photograph becomes one pair with a perfectly known homography. What can such a "
