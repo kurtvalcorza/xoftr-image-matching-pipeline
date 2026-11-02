@@ -10,7 +10,7 @@ keywords = ["xoftr", "image-matching", "feature-correspondence", "homography", "
 dependencies = [
     "huggingface-hub==0.36.2",
     "numpy==2.5.3",
-    "pillow==11.3.0",
+    "pillow==13.0.0",
     "safetensors==0.8.0",
     "torch==2.14.0",
 ]
