@@ -1,0 +1,75 @@
+{
+  "repo": "xoftr-image-matching-pipeline",
+  "sha": "fe07bf3295899f0e850730d69fd79bad2964479d",
+  "notebook": "tutorials/xoftr_image_matching_colab.ipynb",
+  "blob": "4b12e452f8164515e144b2b762bc76e6aef9e1bf",
+  "gpu": "T4",
+  "session": "suite-xoftr-fe07bf3-d4fd",
+  "started_utc": "2026-11-03T16:30:25+00:00",
+  "runner": "Colab CLI `colab exec -f` on a fresh session (not a browser Run all)",
+  "overrides": [
+    {
+      "name": "USE_BYOD",
+      "from": "False",
+      "to": "True"
+    },
+    {
+      "name": "BYOD_PATH",
+      "from": "''",
+      "to": "'/etc/hostname'"
+    }
+  ],
+  "run_copy_blob": "fdce4a41b34f570ec09193a1cc67b6a6a4af93f8",
+  "run_copy_sha256": "23b3b712be1e56c2b05a92eeb130e514095bd21d0713397cc4ccc4cb14866eb5",
+  "run_copy_note": "refusal run: the run copy is the committed notebook with the listed assignment overrides, cut immediately after the refusal cell and re-serialised (nbformat layout); input_unchanged compares against that copy",
+  "truncated_after_cell": "xoftr_image_matching-25",
+  "refusal_cell_ref": "xoftr_image_matching-25",
+  "refusal_cell_index": 11,
+  "cells_dropped": 20,
+  "code_cells_dropped": 6,
+  "original_sha256": "73774c67b71b266df4a36e1287af54b32aba5ed273b9c20e4328107e80c97549",
+  "status": "[suite-xoftr-fe07bf3-d4fd] gpu-t4-s-usw1b3-iug7fqpgtzsi | Hardware: T4 | Shape: Standard | Variant: GPU | Status: IDLE",
+  "exec_exit_code": 0,
+  "stopped": true,
+  "stop_verified": true,
+  "wall_s": 89.8,
+  "input_unchanged": true,
+  "executed_file": "xoftr_image_matching_colab_fe07bf3_colab-cli-t4_output.ipynb",
+  "log_cells": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+  ],
+  "log_total": 11,
+  "code_cells": 11,
+  "executed_cells": 4,
+  "errors": [
+    {
+      "cell": "xoftr_image_matching-25",
+      "ename": "IsolatedCellRefusal",
+      "evalue": "hostname: BYOD datasets must be a directory or a .zip holding JPEG / PNG image files; fix the named file or setting and run this cell again (or set USE_BYOD = False)."
+    }
+  ],
+  "execution_counts": [],
+  "sequential": null,
+  "executed_sha256": "475050483229657f450182205f10ad9aa1de25a05d0f004b8effe8dc5c158555",
+  "log_sequential_complete": true,
+  "mode": "expect_refusal",
+  "refusal_line": "Refused: hostname: BYOD datasets must be a directory or a .zip holding JPEG / PNG image files; fix the named file or setting and run this cell again (or set USE_BYOD = False).",
+  "halting_cell_index": 11,
+  "halting_cell_id": "xoftr_image_matching-25",
+  "error_cells": [
+    11
+  ],
+  "refusal_fail_reasons": [],
+  "refusal_ok": true,
+  "verdict": "PASS"
+}
